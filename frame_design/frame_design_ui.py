@@ -17,12 +17,13 @@ def highlight_active_tool_button(active_button_label):
     
     for button in buttons:
         try:
+            button_tag = button.replace(" ", "_") + "_button"
             if button == active_button_label:
-                dpg.configure_item(f"{button}_button", background_color=(0, 100, 0))
+                dpg.configure_item(button_tag, background_color=(0, 100, 0))
             else:
-                dpg.configure_item(f"{button}_button", background_color=(0, 0, 0, 0))
-        except:
-            print(f"Error configuring button {button}")
+                dpg.configure_item(button_tag, background_color=(0, 0, 0, 0))
+        except Exception as e:
+            print(f"Error configuring button {button}: {e}")
 
 def update_stats(model):
     """Update statistics display."""
@@ -41,23 +42,35 @@ def update_stats(model):
         print(f"Error updating stats: {e}")
 
 def get_canvas_mouse_pos():
-    """Calculate mouse position relative to canvas."""
+    """Get mouse position relative to canvas origin"""
+    # Get mouse position in screen coordinates
+    mouse_pos = dpg.get_mouse_pos(local=False)
+    
     try:
-        viewport_pos = dpg.get_mouse_pos(local=False)
-        canvas_window_pos = dpg.get_item_pos("canvas_window")
+        # Get canvas position on screen
+        canvas_item = dpg.get_item_info("canvas")
+        if not canvas_item:
+            return None
         
-        # Calculate adjusted position
-        x = viewport_pos[0] - canvas_window_pos[0] - 8  # Adjust if needed
-        y = viewport_pos[1] - canvas_window_pos[1] - 30  # Adjust for title bar height
+        # Calculate position relative to canvas using mouse position 
+        # and known offsets (may need adjustment)
+        window_pos = dpg.get_viewport_pos()
+        # These offsets might need to be adjusted based on your UI layout
+        # You may need to add additional offsets for title bars, borders, etc.
+        offset_x = SIDEBAR_WIDTH + 10  # Sidebar width + some padding
+        offset_y = 30  # Allow for window title bar
+        
+        x = mouse_pos[0] - window_pos[0] - offset_x
+        y = mouse_pos[1] - window_pos[1] - offset_y
         
         # Ensure coordinates are within canvas bounds
-        if x < 0 or y < 0 or x > CANVAS_WIDTH or y > CANVAS_HEIGHT:
-            return None
+        if 0 <= x <= CANVAS_WIDTH and 0 <= y <= CANVAS_HEIGHT:
+            return (x, y)
             
-        return (x, y)
     except Exception as e:
-        print(f"Error calculating mouse position: {e}")
-        return None
+        print(f"Error getting canvas mouse position: {e}")
+        
+    return None
 
 def create_ui(add_node_callback, add_beam_callback, add_fixture_callback, 
               add_mass_callback, delete_callback, clear_all_callback, canvas_click_callback):
@@ -69,10 +82,10 @@ def create_ui(add_node_callback, add_beam_callback, add_fixture_callback,
                 dpg.add_text("Tools", color=(255, 255, 0))
                 dpg.add_separator()
                 with dpg.group():
-                    dpg.add_button(label="Add Node", callback=add_node_callback, width=180, tag="Add Node_button")
-                    dpg.add_button(label="Add Beam", callback=add_beam_callback, width=180, tag="Add Beam_button")
-                    dpg.add_button(label="Add Fixture", callback=add_fixture_callback, width=180, tag="Add Fixture_button")
-                    dpg.add_button(label="Add Mass", callback=add_mass_callback, width=180, tag="Add Mass_button")
+                    dpg.add_button(label="Add Node", callback=add_node_callback, width=180, tag="Add_Node_button")
+                    dpg.add_button(label="Add Beam", callback=add_beam_callback, width=180, tag="Add_Beam_button")
+                    dpg.add_button(label="Add Fixture", callback=add_fixture_callback, width=180, tag="Add_Fixture_button")
+                    dpg.add_button(label="Add Mass", callback=add_mass_callback, width=180, tag="Add_Mass_button")
                     dpg.add_separator()
                     dpg.add_button(label="Delete", callback=delete_callback, width=180, tag="Delete_button")
                     dpg.add_button(label="Clear All", callback=clear_all_callback, width=180)
@@ -97,11 +110,14 @@ def create_ui(add_node_callback, add_beam_callback, add_fixture_callback,
             
             # Main drawing canvas
             with dpg.child_window(width=CANVAS_WIDTH, height=CANVAS_HEIGHT, tag="canvas_window"):
+                # Create a single drawing canvas with click handler
                 with dpg.drawlist(width=CANVAS_WIDTH, height=CANVAS_HEIGHT, tag="canvas"):
                     # Canvas will be drawn here
                     pass
                 
-                # Handle mouse clicks on the canvas
+                # Add handler for canvas clicks
                 with dpg.item_handler_registry(tag="canvas_handler"):
                     dpg.add_item_clicked_handler(callback=canvas_click_callback)
+                
+                # Bind the handler registry to the canvas
                 dpg.bind_item_handler_registry("canvas", "canvas_handler")

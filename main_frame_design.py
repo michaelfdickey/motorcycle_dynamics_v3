@@ -65,19 +65,35 @@ def canvas_click(sender, app_data):
     
     print(f"\n--- CANVAS CLICK ---")
     
-    # Get mouse position relative to canvas
-    pos = get_canvas_mouse_pos()
-    if not pos:
-        return
-        
-    x, y = pos
-    print(f"Canvas clicked at: {x}, {y}")
+    # Get mouse position in screen coordinates
+    mouse_pos = dpg.get_mouse_pos(local=False)
+    print(f"Raw mouse position: {mouse_pos}")
+    
+    # Get item configuration info to determine offsets precisely
+    canvas_window_info = dpg.get_item_configuration("canvas_window")
+    main_window_pos = dpg.get_item_pos("main_window")
+    
+    # Calculate canvas position - this is the key to accurate positioning
+    # Consider the sidebar width and any window decorations
+    from frame_design.frame_design_ui import SIDEBAR_WIDTH
+    
+    # Fine-tuned constants to adjust for window decorations and the canvas position
+    # within the main window - adjusted to fix the 20-pixel offset
+    WINDOW_PADDING_X = 23   # Window frame width + adjustment for 20px offset
+    WINDOW_PADDING_Y = 15   # Window title bar + frame + adjustment for 20px offset
+    
+    # Calculate the exact position relative to the canvas
+    x = mouse_pos[0] - main_window_pos[0] - SIDEBAR_WIDTH - WINDOW_PADDING_X
+    y = mouse_pos[1] - main_window_pos[1] - WINDOW_PADDING_Y
+    
+    print(f"Calculated canvas position: {x}, {y}")
     
     # Handle different tool actions
     if selected_tool == "node":
         model.add_node((x, y))
         print(f"Added node at {x}, {y}")
-        
+    
+    # ... rest of the function remains unchanged 
     elif selected_tool == "beam" and len(model.nodes) >= 1:
         closest_idx = model.find_closest_node(x, y)
         if closest_idx is not None:
