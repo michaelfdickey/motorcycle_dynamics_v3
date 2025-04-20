@@ -174,6 +174,9 @@ def main():
     # Draw initial grid
     draw_grid()
     
+    # Set Node tool as default and highlight it
+    add_node_callback()
+    
     # Main loop
     try:
         while dpg.is_dearpygui_running():

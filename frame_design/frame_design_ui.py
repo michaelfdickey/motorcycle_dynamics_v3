@@ -12,18 +12,46 @@ CANVAS_WIDTH = WINDOW_WIDTH - SIDEBAR_WIDTH
 CANVAS_HEIGHT = WINDOW_HEIGHT - 50
 
 def highlight_active_tool_button(active_button_label):
-    """Highlight the active tool button and reset others."""
+    """Highlight the active tool button by coloring its frame without moving buttons."""
     buttons = ["Add Node", "Add Beam", "Add Fixture", "Add Mass", "Delete"]
     
     for button in buttons:
         try:
-            button_tag = button.replace(" ", "_") + "_button"
+            # Get the frame tag for this button
+            frame_tag = button.replace(" ", "_") + "_frame"
+            
+            # Set frame color based on whether this is the active button
             if button == active_button_label:
-                dpg.configure_item(button_tag, background_color=(0, 100, 0))
+                # Create a bold green theme for the active tool
+                with dpg.theme() as theme:
+                    with dpg.theme_component(dpg.mvAll):
+                        # Bright green background
+                        dpg.add_theme_color(dpg.mvThemeCol_ChildBg, (0, 120, 0), category=dpg.mvThemeCat_Core)
+                        # Keep consistent styling to avoid layout changes
+                        dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, 5, category=dpg.mvThemeCat_Core)
+                        # Use the same border size for all states to prevent movement
+                        dpg.add_theme_style(dpg.mvStyleVar_ChildBorderSize, 1, category=dpg.mvThemeCat_Core)
+                        # Border color for active
+                        dpg.add_theme_color(dpg.mvThemeCol_Border, (0, 255, 0), category=dpg.mvThemeCat_Core)
+                
+                # Apply the theme to the frame
+                dpg.bind_item_theme(frame_tag, theme)
             else:
-                dpg.configure_item(button_tag, background_color=(0, 0, 0, 0))
+                # Dark gray background for inactive tools
+                with dpg.theme() as theme:
+                    with dpg.theme_component(dpg.mvAll):
+                        dpg.add_theme_color(dpg.mvThemeCol_ChildBg, (40, 40, 40), category=dpg.mvThemeCat_Core)
+                        # Keep consistent styling
+                        dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, 5, category=dpg.mvThemeCat_Core)
+                        # Use the same border size for all states to prevent movement
+                        dpg.add_theme_style(dpg.mvStyleVar_ChildBorderSize, 1, category=dpg.mvThemeCat_Core)
+                        # Border color for inactive (dark gray border)
+                        dpg.add_theme_color(dpg.mvThemeCol_Border, (60, 60, 60), category=dpg.mvThemeCat_Core)
+                
+                dpg.bind_item_theme(frame_tag, theme)
+            
         except Exception as e:
-            print(f"Error configuring button {button}: {e}")
+            print(f"Error highlighting button {button}: {e}")
 
 def update_stats(model):
     """Update statistics display."""
@@ -81,14 +109,56 @@ def create_ui(add_node_callback, add_beam_callback, add_fixture_callback,
             with dpg.child_window(width=SIDEBAR_WIDTH, height=CANVAS_HEIGHT, tag="sidebar"):
                 dpg.add_text("Tools", color=(255, 255, 0))
                 dpg.add_separator()
+                
+                # Tool buttons with highlighted frames
                 with dpg.group():
-                    dpg.add_button(label="Add Node", callback=add_node_callback, width=180, tag="Add_Node_button")
-                    dpg.add_button(label="Add Beam", callback=add_beam_callback, width=180, tag="Add_Beam_button")
-                    dpg.add_button(label="Add Fixture", callback=add_fixture_callback, width=180, tag="Add_Fixture_button")
-                    dpg.add_button(label="Add Mass", callback=add_mass_callback, width=180, tag="Add_Mass_button")
+                    # Create a base theme for all buttons to ensure consistent layout
+                    with dpg.theme() as button_base_theme:
+                        with dpg.theme_component(dpg.mvAll):
+                            dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, 5, category=dpg.mvThemeCat_Core)
+                            dpg.add_theme_style(dpg.mvStyleVar_ChildBorderSize, 1, category=dpg.mvThemeCat_Core)
+                            dpg.add_theme_color(dpg.mvThemeCol_Border, (60, 60, 60), category=dpg.mvThemeCat_Core)
+                            dpg.add_theme_color(dpg.mvThemeCol_ChildBg, (40, 40, 40), category=dpg.mvThemeCat_Core)
+                    
+                    # Add Node - using child_window for better styling control
+                    with dpg.child_window(height=35, width=200, tag="Add_Node_frame", no_scrollbar=True):
+                        dpg.add_button(label="Add Node", callback=add_node_callback, width=190, tag="Add_Node_button")
+                    dpg.bind_item_theme("Add_Node_frame", button_base_theme)
+                    
+                    dpg.add_spacer(height=5)
+                    
+                    # Add Beam
+                    with dpg.child_window(height=35, width=200, tag="Add_Beam_frame", no_scrollbar=True):
+                        dpg.add_button(label="Add Beam", callback=add_beam_callback, width=190, tag="Add_Beam_button")
+                    dpg.bind_item_theme("Add_Beam_frame", button_base_theme)
+                    
+                    dpg.add_spacer(height=5)
+                    
+                    # Add Fixture
+                    with dpg.child_window(height=35, width=200, tag="Add_Fixture_frame", no_scrollbar=True):
+                        dpg.add_button(label="Add Fixture", callback=add_fixture_callback, width=190, tag="Add_Fixture_button")
+                    dpg.bind_item_theme("Add_Fixture_frame", button_base_theme)
+                    
+                    dpg.add_spacer(height=5)
+                    
+                    # Add Mass
+                    with dpg.child_window(height=35, width=200, tag="Add_Mass_frame", no_scrollbar=True):
+                        dpg.add_button(label="Add Mass", callback=add_mass_callback, width=190, tag="Add_Mass_button")
+                    dpg.bind_item_theme("Add_Mass_frame", button_base_theme)
+                    
+                    dpg.add_spacer(height=5)
                     dpg.add_separator()
-                    dpg.add_button(label="Delete", callback=delete_callback, width=180, tag="Delete_button")
-                    dpg.add_button(label="Clear All", callback=clear_all_callback, width=180)
+                    dpg.add_spacer(height=5)
+                    
+                    # Delete
+                    with dpg.child_window(height=35, width=200, tag="Delete_frame", no_scrollbar=True):
+                        dpg.add_button(label="Delete", callback=delete_callback, width=190, tag="Delete_button")
+                    dpg.bind_item_theme("Delete_frame", button_base_theme)
+                    
+                    dpg.add_spacer(height=5)
+                    
+                    # Clear All (no highlighting needed)
+                    dpg.add_button(label="Clear All", callback=clear_all_callback, width=200)
                 
                 dpg.add_separator()
                 dpg.add_text("Properties")
