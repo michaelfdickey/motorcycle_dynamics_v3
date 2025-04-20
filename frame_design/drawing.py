@@ -51,15 +51,28 @@ def draw_beams(model, mouse_pos=None):
                 
                 dpg.draw_line(start_pos, end_pos, color=BEAM_COLOR, thickness=2, parent="canvas")
                 
-                # Draw small circle at midpoint
+                # Calculate midpoint
                 mid_x = (start_pos[0] + end_pos[0]) / 2
                 mid_y = (start_pos[1] + end_pos[1]) / 2
+                
+                # Draw small circle at midpoint
                 dpg.draw_circle((mid_x, mid_y), 3, color=BEAM_COLOR, fill=BEAM_COLOR, parent="canvas")
+                
+                # Draw beam label with index
+                dpg.draw_text((mid_x + 5, mid_y - 10), f"B{i}", color=(255, 255, 255, 255), parent="canvas")
     
     # Draw beam preview when a node is selected
-    if mouse_pos and model.selected_node is not None and model.selected_node < len(model.nodes):
-        start_pos = model.nodes[model.selected_node]["pos"]
-        dpg.draw_line(start_pos, mouse_pos, color=BEAM_HOVER_COLOR, thickness=1, style=2, parent="canvas")
+    if mouse_pos is not None and model.selected_node is not None and model.selected_node < len(model.nodes):
+        try:
+            start_pos = model.nodes[model.selected_node]["pos"]
+            
+            # Make sure mouse_pos has valid coordinates
+            if isinstance(mouse_pos, tuple) and len(mouse_pos) == 2:
+                dpg.draw_line(start_pos, mouse_pos, color=BEAM_HOVER_COLOR, thickness=1, style=2, parent="canvas")
+            else:
+                print(f"Warning: Invalid mouse position format: {mouse_pos}")
+        except Exception as e:
+            print(f"Error drawing beam preview: {e}")
 
 def draw_fixtures(model):
     """Draw all fixtures on the canvas."""

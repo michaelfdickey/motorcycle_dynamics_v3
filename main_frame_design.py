@@ -182,11 +182,9 @@ def main():
         while dpg.is_dearpygui_running():
             # Update mouse position for beam preview
             if selected_tool == "beam" and model.selected_node is not None:
-                pos = get_canvas_mouse_pos()
-                if pos:
-                    draw_everything(model, pos)
-            
-            update_stats(model)
+                mouse_pos = get_canvas_mouse_pos()
+                if mouse_pos:  # Make sure we have valid coordinates
+                    draw_everything(model, mouse_pos)
             dpg.render_dearpygui_frame()
             
     except Exception as e:

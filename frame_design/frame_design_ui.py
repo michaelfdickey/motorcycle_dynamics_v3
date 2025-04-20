@@ -75,21 +75,17 @@ def get_canvas_mouse_pos():
     mouse_pos = dpg.get_mouse_pos(local=False)
     
     try:
-        # Get canvas position on screen
-        canvas_item = dpg.get_item_info("canvas")
-        if not canvas_item:
-            return None
+        # Get main window position
+        main_window_pos = dpg.get_item_pos("main_window")
         
-        # Calculate position relative to canvas using mouse position 
-        # and known offsets (may need adjustment)
-        window_pos = dpg.get_viewport_pos()
-        # These offsets might need to be adjusted based on your UI layout
-        # You may need to add additional offsets for title bars, borders, etc.
-        offset_x = SIDEBAR_WIDTH + 10  # Sidebar width + some padding
-        offset_y = 30  # Allow for window title bar
+        # Use the same offset calculation as in canvas_click function
+        # for consistent coordinates between clicks and mouse movement
+        WINDOW_PADDING_X = 28   # Window frame width + adjustment
+        WINDOW_PADDING_Y = 57   # Window title bar + frame + adjustment
         
-        x = mouse_pos[0] - window_pos[0] - offset_x
-        y = mouse_pos[1] - window_pos[1] - offset_y
+        # Calculate position relative to canvas
+        x = mouse_pos[0] - main_window_pos[0] - SIDEBAR_WIDTH - WINDOW_PADDING_X
+        y = mouse_pos[1] - main_window_pos[1] - WINDOW_PADDING_Y
         
         # Ensure coordinates are within canvas bounds
         if 0 <= x <= CANVAS_WIDTH and 0 <= y <= CANVAS_HEIGHT:
