@@ -179,12 +179,31 @@ def main():
     
     # Main loop
     try:
+        last_mouse_pos = None
         while dpg.is_dearpygui_running():
             # Update mouse position for beam preview
             if selected_tool == "beam" and model.selected_node is not None:
-                mouse_pos = get_canvas_mouse_pos()
-                if mouse_pos:  # Make sure we have valid coordinates
-                    draw_everything(model, mouse_pos)
+                # Use the EXACT same offset calculation as in canvas_click function
+                mouse_pos = dpg.get_mouse_pos(local=False)
+                if mouse_pos:
+                    # Get main window position
+                    main_window_pos = dpg.get_item_pos("main_window")
+                    
+                    # Use the same constants as in canvas_click
+                    from frame_design.frame_design_ui import SIDEBAR_WIDTH
+                    WINDOW_PADDING_X = 23   # Match canvas_click exactly
+                    WINDOW_PADDING_Y = 15   # Match canvas_click exactly
+                    
+                    # Calculate canvas position with consistent offsets
+                    x = mouse_pos[0] - main_window_pos[0] - SIDEBAR_WIDTH - WINDOW_PADDING_X
+                    y = mouse_pos[1] - main_window_pos[1] - WINDOW_PADDING_Y
+                    
+                    # Only redraw if position has changed
+                    current_pos = (x, y)
+                    if current_pos != last_mouse_pos:
+                        last_mouse_pos = current_pos
+                        draw_everything(model, current_pos)
+            
             dpg.render_dearpygui_frame()
             
     except Exception as e:
