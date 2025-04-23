@@ -15,7 +15,7 @@ NODE_COLOR = (255, 255, 0, 255)  # Yellow
 SELECTED_NODE_COLOR = (0, 255, 0, 255)  # Green
 BEAM_COLOR = (200, 200, 200, 255)  # Light gray
 BEAM_HOVER_COLOR = (255, 255, 255, 255)  # White for beam preview
-FIXTURE_COLOR = (0, 0, 255, 255)  # Blue
+FIXTURE_COLOR = (255, 128, 0, 255)  # RED
 MASS_COLOR = (255, 0, 0, 255)  # Red
 
 def draw_grid():
@@ -75,18 +75,67 @@ def draw_beams(model, mouse_pos=None):
             print(f"Error drawing beam preview: {e}")
 
 def draw_fixtures(model):
-    """Draw all fixtures on the canvas."""
+    """Draw all fixtures on the canvas with engineering-style supports."""
+    # Fixture dimensions (in pixels) - easily adjustable
+    FIXTURE_DIMENSIONS = {
+        "box_size": 14,           # Size of square around node
+        "support_line_width": 22, # Width of horizontal support line
+        "strut_length": 12,        # Length of diagonal strut lines 
+        "strut_angle": 10,        # Angle of diagonal struts (degrees)
+        "strut_count": 9,         # Number of strut lines to draw
+        "strut_spacing": 2        # Spacing between strut lines
+    }
+    
+    import math
+    
     for fixture in model.fixtures:
         if fixture["node"] < len(model.nodes):
             node_pos = model.nodes[fixture["node"]]["pos"]
-            dpg.draw_circle(node_pos, 8, color=FIXTURE_COLOR, thickness=2, parent="canvas")
+            x, y = node_pos
+            
+            # 1. Draw square around node
+            half_size = FIXTURE_DIMENSIONS["box_size"] / 2
+            box_min = (x - half_size, y - half_size)
+            box_max = (x + half_size, y + half_size)
+            dpg.draw_rectangle(box_min, box_max, color=FIXTURE_COLOR, thickness=2, parent="canvas")
+            
+            # 2. Draw horizontal support line at bottom
+            support_half_width = FIXTURE_DIMENSIONS["support_line_width"] / 2
+            support_y = y + half_size + 2  # Just below the square
+            support_start = (x - support_half_width, support_y)
+            support_end = (x + support_half_width, support_y)
+            dpg.draw_line(support_start, support_end, color=FIXTURE_COLOR, thickness=2, parent="canvas")
+            
+            # 3. Draw diagonal strut lines
+            strut_length = FIXTURE_DIMENSIONS["strut_length"]
+            angle_rad = math.radians(FIXTURE_DIMENSIONS["strut_angle"])
+            dx = math.sin(angle_rad) * strut_length
+            dy = math.cos(angle_rad) * strut_length
+            
+            half_count = FIXTURE_DIMENSIONS["strut_count"] // 2
+            spacing = FIXTURE_DIMENSIONS["strut_spacing"]
+            
+            # Draw struts centered on the support line
+            for i in range(-half_count, half_count + 1):
+                strut_x = x + (i * spacing)
+                strut_start = (strut_x, support_y)
+                
+                # Alternate between left and right struts
+                if i % 2 == 0:
+                    # Strut going down-right
+                    strut_end = (strut_x + dx, support_y + dy)
+                else:
+                    # Strut going down-left
+                    strut_end = (strut_x - dx, support_y + dy)
+                
+                dpg.draw_line(strut_start, strut_end, color=FIXTURE_COLOR, thickness=1, parent="canvas")
 
 def draw_masses(model):
     """Draw all masses on the canvas."""
     for mass in model.masses:
         if mass["node"] < len(model.nodes):
             node_pos = model.nodes[mass["node"]]["pos"]
-            dpg.draw_circle(node_pos, 8, color=MASS_COLOR, thickness=2, parent="canvas")
+            dpg.draw_circle(node_pos, 12, color=MASS_COLOR, thickness=2, parent="canvas")
             dpg.draw_text((node_pos[0] + 10, node_pos[1] + 10), 
                          f"{mass['value']}kg", color=(255, 255, 255, 255), parent="canvas")
 
