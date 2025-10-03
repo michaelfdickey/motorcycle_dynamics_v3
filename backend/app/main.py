@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import schemas
 from .simulation import simulate_structure
+from .truss_solver import solve_truss, TrussError
 
 app = FastAPI(title="Motorcycle Frame Simulator API", version="0.1.0")
 
@@ -21,11 +22,10 @@ async def health():
 
 @app.post("/simulate", response_model=schemas.SimulationResult)
 async def simulate(payload: schemas.SimulationInput):
-    """Run a linear static frame analysis.
-
-    Errors (e.g., singular matrix) are propagated as 500 for now; later we can raise HTTPException.
-    """
-    result = simulate_structure(payload)
-    return result
+    """Run selected structural analysis (frame or truss)."""
+    if payload.analysis_type == 'truss':
+        return solve_truss(payload)
+    # default fallback to frame
+    return simulate_structure(payload)
 
 # To run (dev): uvicorn backend.app.main:app --reload

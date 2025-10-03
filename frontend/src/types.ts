@@ -31,7 +31,10 @@ export interface SimulationInput {
   nodes: NodeInput[];
   beams: BeamInput[];
   loads: LoadInput[];
+  analysis_type?: string; // 'frame' (default) or 'truss'
 }
+
+export type SupportType = 'pin' | 'roller';
 
 // Masses (lumped) are currently frontend-only (not yet sent to backend static solver)
 export interface NodeMass {

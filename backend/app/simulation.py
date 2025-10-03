@@ -164,33 +164,48 @@ def simulate_structure(inp: schemas.SimulationInput) -> schemas.SimulationResult
             )
         )
 
-    # Internal forces (local end forces from k_local * u_local)
+    # Internal forces (approximate). Recompute element geometry and recover axial force using extension for clear tension/compression sign.
     beam_results: List[schemas.BeamInternalForce] = []
-    for beam, dof_map, k_global in element_descriptors:
-        # We need local k to get standard interpretation; we approximated using k_global only here.
-        # Recompute local and transformation to recover local forces cleanly.
+    for beam, dof_map, _k_global in element_descriptors:
         ni = nodes[node_index[beam.node_start]]
         nj = nodes[node_index[beam.node_end]]
-        k_glob, L, c, s = _element_stiffness(beam.E, beam.A, beam.I, ni.x, ni.y, nj.x, nj.y)
-        # Rebuild T (duplicated from stiffness routine)
-        T = np.array([
-            [ c, -s, 0, 0,  0, 0],
-            [ s,  c, 0, 0,  0, 0],
-            [ 0,  0, 1, 0,  0, 0],
-            [ 0,  0, 0, c, -s, 0],
-            [ 0,  0, 0, s,  c, 0],
-            [ 0,  0, 0, 0,  0, 1],
-        ], dtype=float)
-        # Derive local stiffness by inverting transform: k_local = T k_global T^T (approx here)
-        k_local = T @ k_glob @ T.T
-        u_elem_global = U[dof_map]
-        u_local = T @ u_elem_global
-        f_local = k_local @ u_local
-        axial = f_local[0]  # axial force at start
-        shear_start = f_local[1]
-        moment_start = f_local[2]
-        shear_end = -f_local[4]  # opposite sign end
-        moment_end = -f_local[5]
+        dx0 = nj.x - ni.x
+        dy0 = nj.y - ni.y
+        L = math.hypot(dx0, dy0)
+        if L <= 0:
+            axial = 0.0
+            shear_start = shear_end = moment_start = moment_end = 0.0
+        else:
+            # Original direction cosines
+            c = dx0 / L
+            s = dy0 / L
+            # Deformed positions (translations only; rotation does not shift centroid)
+            ux_i, uy_i, _r_i = _node_dof_indices(node_index[beam.node_start])
+            ux_j, uy_j, _r_j = _node_dof_indices(node_index[beam.node_end])
+            x1_def = ni.x + U[ux_i]
+            y1_def = ni.y + U[uy_i]
+            x2_def = nj.x + U[ux_j]
+            y2_def = nj.y + U[uy_j]
+            L_def = math.hypot(x2_def - x1_def, y2_def - y1_def)
+            # Build local force vector for small-displacement axial sign recovery.
+            k_glob, _Ldummy, c2, s2 = _element_stiffness(beam.E, beam.A, beam.I, ni.x, ni.y, nj.x, nj.y)
+            T = np.array([
+                [ c2, -s2, 0, 0,   0, 0],
+                [ s2,  c2, 0, 0,   0, 0],
+                [ 0,   0,  1, 0,   0, 0],
+                [ 0,   0,  0, c2, -s2,0],
+                [ 0,   0,  0, s2,  c2,0],
+                [ 0,   0,  0, 0,   0, 1],
+            ], dtype=float)
+            k_local = T @ k_glob @ T.T
+            u_elem_global = U[dof_map]
+            u_local = T @ u_elem_global
+            f_local = k_local @ u_local
+            axial = f_local[0]  # sign: + tension, - compression
+            shear_start = f_local[1]
+            moment_start = f_local[2]
+            shear_end = -f_local[4]
+            moment_end = -f_local[5]
         beam_results.append(
             schemas.BeamInternalForce(
                 id=beam.id,

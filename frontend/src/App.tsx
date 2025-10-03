@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FrameCanvas } from './components/FrameCanvas';
-import { BeamInput, NodeInput, SimulationInput, SimulationResult, ToolMode, NodeMass, UnitSystem } from './types';
+import { BeamInput, NodeInput, SimulationInput, SimulationResult, ToolMode, NodeMass, UnitSystem, SupportType } from './types';
 import { UNIT_FACTORS, convertNodePositions, convertBeamProperties, getDefaultE, convertModulusToSI, convertSectionToSI, convertMasses } from './units';
 import { simulate } from './api';
 
@@ -13,12 +13,14 @@ export const App: React.FC = () => {
   const [beams, setBeams] = useState<BeamInput[]>([]);
   const [pendingBeamStart, setPendingBeamStart] = useState<string | null>(null);
   const [mode, setMode] = useState<ToolMode>('node');
-  const [fixtures, setFixtures] = useState<Set<string>>(new Set());
+  const [supports, setSupports] = useState<Map<string, SupportType>>(new Map());
   const [masses, setMasses] = useState<NodeMass[]>([]);
   // Default to IPS per user request; values entered / defaults are expressed in IPS unless switched.
   const [unitSystem, setUnitSystem] = useState<UnitSystem>('IPS');
   const [editingMassId, setEditingMassId] = useState<string | null>(null);
   const [editingMassValue, setEditingMassValue] = useState<string>('');
+  const [analysisType, setAnalysisType] = useState<'frame' | 'truss'>('truss');
+  const [determinacyMsg, setDeterminacyMsg] = useState<string>('');
 
   const startMassEdit = (m: NodeMass) => {
     setEditingMassId(m.id);
@@ -67,12 +69,23 @@ export const App: React.FC = () => {
         setStatus(`Beam ${beamId} added.`);
       }
     } else if (mode === 'fixture') {
-      setFixtures(prev => {
-        const next = new Set(prev);
-        if (next.has(id)) next.delete(id); else next.add(id);
-        // apply constraints to node data model
-        setNodes(nodes => nodes.map(n => n.id === id ? { ...n, constraints: next.has(id) ? { fix_x: true, fix_y: true, fix_rotation: true } : undefined } : n));
-        setStatus(next.has(id) ? `Fixed ${id}` : `Released ${id}`);
+      // cycle: none -> pin -> roller -> none
+      setSupports(curr => {
+        const next = new Map(curr);
+        const currentType = next.get(id);
+        let newType: SupportType | undefined;
+        if (!currentType) newType = 'pin';
+        else if (currentType === 'pin') newType = 'roller';
+        else newType = undefined;
+        if (newType) next.set(id, newType); else next.delete(id);
+        // apply constraints to nodes (pin: fix_x, fix_y; roller: fix_y only)
+        setNodes(nodes => nodes.map(n => {
+          if (n.id !== id) return n;
+            if (!newType) return { ...n, constraints: undefined };
+            if (newType === 'pin') return { ...n, constraints: { fix_x: true, fix_y: true, fix_rotation: true } };
+            return { ...n, constraints: { fix_x: false, fix_y: true, fix_rotation: true } };
+        }));
+        setStatus(newType ? `${id} set to ${newType}` : `${id} support removed`);
         return next;
       });
     } else if (mode === 'mass') {
@@ -88,7 +101,22 @@ export const App: React.FC = () => {
   };
 
   const runSimulation = async () => {
-    // Masses ignored in static call for now.
+    // Truss determinacy pre-check (m + r == 2j) when in truss mode
+    if (analysisType === 'truss') {
+      const m = beams.length;
+      const r = Array.from(supports.values()).reduce((acc, t) => acc + (t === 'pin' ? 2 : 1), 0);
+      const jCount = nodes.length;
+      const lhs = m + r;
+      const rhs = 2 * jCount;
+      if (lhs !== rhs) {
+        const msg = `Truss not determinate: m+r=${lhs}, 2j=${rhs}. Adjust supports or members (need ${rhs - r} members or change support types).`;
+        setDeterminacyMsg(msg);
+        setStatus('Determinacy check failed.');
+        return;
+      } else {
+        setDeterminacyMsg('');
+      }
+    }
     // Convert geometry + properties to SI if needed
     const preparedNodes = nodes.map(n => ({ ...n }));
     const preparedBeams = beams.map(b => ({ ...b }));
@@ -101,19 +129,32 @@ export const App: React.FC = () => {
         return { ...b, A, I, E: convertModulusToSI(b.E, 'IPS') };
       });
     }
-    const payload: SimulationInput = { nodes: nodesForPayload, beams: beamsForPayload, loads: [] };
+    // Derive gravity loads from masses (convert to SI first)
+    const GRAVITY = 9.80665; // m/s^2
+    const gravityLoads = masses.map(m => {
+      const nodeId = m.node_id;
+      // physical kg
+      const massKg = unitSystem === 'IPS' ? m.value * UNIT_FACTORS.IPS.mass : m.value;
+      const Fy = -massKg * GRAVITY; // downward
+      return { node_id: nodeId, Fx: 0, Fy, Moment: 0 };
+    });
+  const payload: SimulationInput = { nodes: nodesForPayload, beams: beamsForPayload, loads: gravityLoads, analysis_type: analysisType };
     setStatus('Simulating...');
     try {
       const res = await simulate(payload);
       setResult(res);
-      setStatus('Simulation complete.');
+      if (gravityLoads.length) {
+        setStatus(`Simulation complete. Applied gravity to ${gravityLoads.length} mass${gravityLoads.length !== 1 ? 'es' : ''}.`);
+      } else {
+        setStatus('Simulation complete.');
+      }
     } catch (e: any) {
       setStatus('Simulation error: ' + e.message);
     }
   };
 
   const clearAll = () => {
-    setNodes([]); setBeams([]); setResult(null); setFixtures(new Set()); setMasses([]); setPendingBeamStart(null); setStatus('Cleared.');
+  setNodes([]); setBeams([]); setResult(null); setSupports(new Map()); setMasses([]); setPendingBeamStart(null); setStatus('Cleared.');
     setEditingMassId(null); setEditingMassValue('');
   };
 
@@ -144,20 +185,33 @@ export const App: React.FC = () => {
               </label>
             ))}
           </fieldset>
+          <fieldset style={{ border: '1px solid #ccc', padding: '0.5rem' }}>
+            <legend>Analysis</legend>
+            {(['truss','frame'] as const).map(a => (
+              <label key={a} style={{ marginRight: '0.5rem' }}>
+                <input type="radio" name="analysis" value={a} checked={analysisType === a} onChange={() => { setAnalysisType(a); setStatus(`Analysis mode: ${a}`); }} /> {a}
+              </label>
+            ))}
+          </fieldset>
           <button onClick={runSimulation} disabled={!nodes.length}>Simulate</button>
           <button onClick={clearAll}>Clear</button>
         </div>
         <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem' }}>
-          Mode tips: node=click empty to add | beam=click start then end node | fixture=toggle support | mass=add lumped mass. Units: KMS=SI, IPS=inch/lbf (converted to SI for solve).
+          Mode tips: node=click empty to add | beam=click start then end node | fixture=toggle support | mass=add lumped mass. Units: KMS=SI, IPS=inch/lbf. Analysis: truss=axial-only pins (rotations ignored), frame=beam bending.
         </div>
         <div style={{ fontSize: '0.9rem', color: '#555' }}>{status}</div>
+        {determinacyMsg && (
+          <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', color: '#b00020', background:'#ffecec', padding:'4px 6px', border:'1px solid #e0a2a2', borderRadius:4 }}>
+            {determinacyMsg} Tip: pin=2 reactions, roller=1; required m = 2j - r.
+          </div>
+        )}
         <FrameCanvas
           nodes={nodes}
           beams={beams}
             result={result}
             mode={mode}
             pendingBeamStart={pendingBeamStart}
-            fixtures={fixtures}
+            supports={supports}
             masses={new Map(masses.map(m => [m.node_id, (masses.filter(mm => mm.node_id === m.node_id).reduce((a,c)=>a+c.value,0))]))}
             unitSystem={unitSystem}
             onAddNode={addNode}
@@ -165,12 +219,13 @@ export const App: React.FC = () => {
         />
         <div style={{ display: 'flex', gap: '2rem', marginTop: '1rem', flexWrap: 'wrap' }}>
           <div>
-            <h4 style={{ margin: '0 0 0.25rem' }}>Fixtures</h4>
-            {Array.from(fixtures).length === 0 ? <div style={{ fontSize: '0.8rem' }}>None</div> : (
+            <h4 style={{ margin: '0 0 0.25rem' }}>Supports</h4>
+            {supports.size === 0 ? <div style={{ fontSize: '0.8rem' }}>None</div> : (
               <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
-                {Array.from(fixtures).map(f => <li key={f}>{f}</li>)}
+                {Array.from(supports.entries()).map(([nid, t]) => <li key={nid}>{nid}: {t}</li>)}
               </ul>
             )}
+            <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '0.25rem' }}>Click cycles: none → pin (fix x,y) → roller (fix y). In truss mode need m + r = 2j.</div>
           </div>
           <div>
             <h4 style={{ margin: '0 0 0.25rem' }}>Masses</h4>
@@ -223,7 +278,7 @@ export const App: React.FC = () => {
         </div>
         <details style={{ marginTop: '1rem' }}>
           <summary>Structure Data</summary>
-          <pre style={{ maxHeight: 200, overflow: 'auto', background: '#f7f7f7', padding: '0.5rem' }}>{JSON.stringify({ unitSystem, nodes, beams, fixtures: Array.from(fixtures), masses, result }, null, 2)}</pre>
+          <pre style={{ maxHeight: 200, overflow: 'auto', background: '#f7f7f7', padding: '0.5rem' }}>{JSON.stringify({ unitSystem, nodes, beams, supports: Array.from(supports.entries()), masses, result }, null, 2)}</pre>
         </details>
       </div>
     </div>

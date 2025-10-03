@@ -32,6 +32,7 @@ class SimulationInput(BaseModel):
     nodes: List[NodeInput]
     beams: List[BeamInput]
     loads: List[LoadInput] = []
+    analysis_type: str = Field('frame', description="'frame' for beam/frame analysis, 'truss' for pin-jointed axial-only analysis")
 
 class NodeResult(BaseModel):
     id: str

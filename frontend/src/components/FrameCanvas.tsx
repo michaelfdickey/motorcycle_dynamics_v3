@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { BeamInput, NodeInput, SimulationResult, ToolMode, UnitSystem } from '../types';
+import { BeamInput, NodeInput, SimulationResult, ToolMode, UnitSystem, SupportType } from '../types';
 import { UNIT_FACTORS } from '../units';
 
 interface Props {
@@ -8,7 +8,7 @@ interface Props {
   result?: SimulationResult | null;
   mode: ToolMode;
   pendingBeamStart: string | null;
-  fixtures: Set<string>; // node ids with full fix
+  supports: Map<string, SupportType>; // node id -> support type
   masses: Map<string, number>; // node_id -> total mass
   unitSystem?: UnitSystem;
   onAddNode: (x: number, y: number) => void;
@@ -18,7 +18,7 @@ interface Props {
 const SCALE = 1; // pixels per model unit
 const DISP_SCALE = 200; // exaggeration factor for displacement visualization
 
-export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendingBeamStart, fixtures, masses, unitSystem = 'KMS', onAddNode, onNodeClick }) => {
+export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendingBeamStart, supports, masses, unitSystem = 'KMS', onAddNode, onNodeClick }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   const handleClick = (e: React.MouseEvent) => {
@@ -53,8 +53,28 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         const d2 = displacementMap.get(n2.id) || { ux: 0, uy: 0 };
         return <line key={b.id + '-def'} x1={(n1.x + d1.ux * DISP_SCALE) * SCALE} y1={(n1.y + d1.uy * DISP_SCALE) * SCALE} x2={(n2.x + d2.ux * DISP_SCALE) * SCALE} y2={(n2.y + d2.uy * DISP_SCALE) * SCALE} stroke="#e63946" strokeWidth={2} strokeDasharray="4 4" />;
       })}
+      {/* Axial force labels (always display in lbs for user clarity) */}
+      {result && result.internal_forces.map(f => {
+        const beam = beams.find(b => b.id === f.id);
+        if (!beam) return null;
+        const n1 = nodes.find(n => n.id === beam.node_start);
+        const n2 = nodes.find(n => n.id === beam.node_end);
+        if (!n1 || !n2) return null;
+        const mx = (n1.x + n2.x) / 2 * SCALE;
+        const my = (n1.y + n2.y) / 2 * SCALE;
+        const axial_lbs = f.axial / UNIT_FACTORS.IPS.force; // convert N -> lbf
+        const isTension = f.axial > 0;
+        const color = isTension ? '#d62828' : '#003049';
+        const label = `${isTension ? 'T' : 'C'} ${Math.abs(axial_lbs).toFixed(1)} lb`;
+        return (
+          <g key={f.id + '-force'}>
+            <text x={mx + 4} y={my - 4} fontSize={10} fill={color} stroke="#fff" strokeWidth={0.8} paintOrder="stroke" style={{ userSelect: 'none' }}>{label}</text>
+          </g>
+        );
+      })}
       {nodes.map(n => {
-        const fixed = fixtures.has(n.id);
+  const supportType = supports.get(n.id);
+  const fixed = !!supportType; // for coloring
         const massValue = masses.get(n.id); // numeric in current unit system
         const selected = pendingBeamStart === n.id && mode === 'beam';
         // Compute physical mass (kg) for size scaling consistency across unit systems
@@ -64,20 +84,31 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         return (
           <g key={n.id} onClick={e => { e.stopPropagation(); onNodeClick(n.id); }} cursor="pointer">
             <circle cx={n.x * SCALE} cy={n.y * SCALE} r={radius} fill={selected ? '#ffb703' : fixed ? '#1d3557' : '#457b9d'} stroke={fixed ? '#000' : '#333'} strokeWidth={selected ? 3 : 1} />
-            {fixed && (() => {
-              // Draw a support triangle: apex at node center, base below.
+            {supportType === 'pin' && (() => {
               const cx = n.x * SCALE;
               const cy = n.y * SCALE;
-              const baseWidth = radius * 4; // ~4x node radius per request
+              const baseWidth = radius * 4;
               const halfBase = baseWidth / 2;
-              const height = radius * 3; // visually balanced; adjust if desired
+              const height = radius * 3;
               const baseY = cy + height;
               const points = [
-                `${cx},${cy}`, // apex touching node
+                `${cx},${cy}`,
                 `${cx - halfBase},${baseY}`,
                 `${cx + halfBase},${baseY}`
               ].join(' ');
               return <polygon points={points} fill="#1d3557" stroke="#000" strokeWidth={1} />;
+            })()}
+            {supportType === 'roller' && (() => {
+              const cx = n.x * SCALE;
+              const cy = n.y * SCALE;
+              const rollerY = cy + radius * 2.2;
+              const lineWidth = radius * 4;
+              return (
+                <g>
+                  <line x1={cx - lineWidth/2} y1={rollerY} x2={cx + lineWidth/2} y2={rollerY} stroke="#1d3557" strokeWidth={2} />
+                  <circle cx={cx} cy={rollerY + radius * 0.9} r={radius * 0.9} fill="#1d3557" stroke="#000" strokeWidth={1} />
+                </g>
+              );
             })()}
             {massValue !== undefined && (() => {
               // Hanging trapezoid mass icon below node

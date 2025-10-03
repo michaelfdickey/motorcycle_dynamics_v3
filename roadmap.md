@@ -18,3 +18,14 @@ Per-DOF fixture toggles and reaction force calculation backend extension.
 Displacement scale slider + numerical results table.
 Save/load model JSON (including units, fixtures, masses).
 Quality gate wrap-up summary.
+
+Editable beam properties (E, A, I) with unit conversion.
+Loads UI (forces/moments) + solver integration.
+Per-DOF fixture toggles & reaction force computation.
+Displacement scale slider + numeric results table.
+Save/load model JSON.
+
+
+- start with planar truss / pinned joints
+- move to frame model
+- move to 3d frame model
