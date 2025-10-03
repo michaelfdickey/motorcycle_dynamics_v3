@@ -227,7 +227,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
   return <line key={b.id + '-def'} x1={(n1.x + d1.ux * DISP_SCALE) * SCALE} y1={(n1.y + d1.uy * DISP_SCALE) * SCALE} x2={(n2.x + d2.ux * DISP_SCALE) * SCALE} y2={(n2.y + d2.uy * DISP_SCALE) * SCALE} stroke="#e63946" strokeWidth={2} strokeDasharray="4 4" />;
       })}
       {/* Axial force labels (always display in lbs for user clarity) */}
-  {result && result.internal_forces.map(f => {
+      {result && result.internal_forces.map(f => {
         const beam = beams.find(b => b.id === f.id);
         if (!beam) return null;
         const n1 = nodes.find(n => n.id === beam.node_start);
@@ -235,8 +235,11 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         if (!n1 || !n2) return null;
         const mx = (n1.x + n2.x) / 2 * SCALE;
         const my = (n1.y + n2.y) / 2 * SCALE;
-        const axial_lbs = f.axial / UNIT_FACTORS.IPS.force; // convert N -> lbf
-        const isTension = f.axial > 0;
+        // User-requested sign reversal: treat original + (solver tension) as compression visually.
+        // Flip sign for display only.
+        const displayAxial = -f.axial; // invert
+        const axial_lbs = displayAxial / UNIT_FACTORS.IPS.force; // convert N -> lbf (after inversion)
+        const isTension = displayAxial > 0; // now + means tension in UI (original solver compression)
         const color = isTension ? '#d62828' : '#003049';
         const label = `${isTension ? 'T' : 'C'} ${Math.abs(axial_lbs).toFixed(1)} lb`;
         return (
@@ -318,36 +321,42 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
           <text x={hoverPoint.x * SCALE + 10} y={hoverPoint.y * SCALE - 10} fontSize={10} fill="#225" stroke="#fff" strokeWidth={0.8} paintOrder="stroke">{hoverPoint.x.toFixed(2)}, {hoverPoint.y.toFixed(2)}</text>
         </g>
       )}
-      {/* Screen-anchored scale bar aligned to major grid lines */}
       {showGrid && (() => {
+        // Improved stable scale bar: sticks to bottom-left, aligns to a major line, minimal jumping via hysteresis.
         const width = 1600; const height = 1000; const desiredLeft = 12; const bottomOffset = 40;
         const major = unitSystem === 'IPS' ? gridSpacing : gridSpacing * 5;
         const majorPx = major * SCALE;
-        // Visible world window
         const worldLeft = panX;
-        const worldRight = panX + width / SCALE;
-        // Find first major line >= worldLeft
-        const firstIdx = Math.ceil(worldLeft / major);
-        const lastIdx = Math.floor((worldRight - major) / major);
-        let startIdx: number | null = null;
-        if (lastIdx >= firstIdx) startIdx = firstIdx; // we have at least one full segment
-        // Fallback: if no full segment fits (very zoomed in), allow partial starting at firstIdx
-        if (startIdx === null) startIdx = Math.ceil(worldLeft / major);
-        const startWorldX = startIdx * major;
-        const startScreenX = (startWorldX - panX) * SCALE;
-        const barPx = majorPx; // one major spacing length
-        // If startScreenX is far from desiredLeft (gap larger than half a major), consider shifting one segment back if it would still be mostly visible
+        // Persistent chosen index
+        const scaleBarState = (scaleBarStateRef.current ||= { idx: Math.floor(worldLeft / major) });
+        // Compute current screen X of stored idx
+        let startWorldX = scaleBarState.idx * major;
+        let startScreenX = (startWorldX - panX) * SCALE;
+        // Hysteresis bounds: keep bar while its left edge within [-0.25*majorPx, desiredLeft + 0.75*majorPx]
+        const minX = -0.25 * majorPx;
+        const maxX = desiredLeft + 0.75 * majorPx;
+        if (startScreenX < minX) {
+          // shift right until within
+          const deltaIdx = Math.ceil((minX - startScreenX) / majorPx);
+          scaleBarState.idx += deltaIdx;
+        } else if (startScreenX > maxX) {
+          const deltaIdx = Math.ceil((startScreenX - maxX) / majorPx);
+            scaleBarState.idx -= deltaIdx;
+        }
+        // After potential adjustment recompute
+        startWorldX = scaleBarState.idx * major;
+        startScreenX = (startWorldX - panX) * SCALE;
+        // Fine adjustment: if gap from desiredLeft exceeds half spacing and moving one left keeps >= -0.25*majorPx, do it once.
         if (startScreenX - desiredLeft > majorPx * 0.5) {
-          const prevStartWorldX = (startIdx - 1) * major;
-          const prevScreenX = (prevStartWorldX - panX) * SCALE;
-          if (prevScreenX >= -majorPx * 0.25) {
-            // Accept previous segment to reduce gap
-            startIdx = startIdx - 1;
+          const prevScreenX = startScreenX - majorPx;
+          if (prevScreenX >= -0.25 * majorPx) {
+            scaleBarState.idx -= 1;
+            startWorldX = scaleBarState.idx * major;
+            startScreenX = (startWorldX - panX) * SCALE;
           }
         }
-        const finalStartWorldX = startIdx * major;
-        const finalStartScreenX = (finalStartWorldX - panX) * SCALE;
-        // Build subdivisions for label ticks (same logic as before)
+        const barPx = majorPx;
+        // Subdivisions
         let sub: number[] = [];
         if (unitSystem === 'IPS') {
           if (major <= 1) { for (let v=0; v<= major + 1e-9; v += 0.125) sub.push(v); }
@@ -355,37 +364,21 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
           else if (major <= 36) { for (let v=0; v<= major + 1e-9; v += 6) sub.push(v); }
           else if (major <= 120) { for (let v=0; v<= major + 1e-9; v += 12) sub.push(v); }
           else { for (let v=0; v<= major + 1e-9; v += 60) sub.push(v); }
-        } else {
-          for (let i=0;i<=5;i++) sub.push(major * i / 5);
-        }
+        } else { for (let i=0;i<=5;i++) sub.push(major * i / 5); }
         const formatIPS = (val: number) => {
-          if (val >= 12) {
-            const feet = Math.floor(val / 12);
-            const inches = val - feet * 12;
-            if (inches < 1e-6) return `${feet}\u2032`;
-            return `${feet}\u2032 ${inches}\u2033`;
-          }
+          if (val >= 12) { const feet = Math.floor(val / 12); const inches = val - feet * 12; return inches < 1e-6 ? `${feet}\u2032` : `${feet}\u2032 ${inches}\u2033`; }
           if (val >= 1) return `${val}\u2033`;
-          const eighths = Math.round(val / 0.125);
-          if (eighths === 0) return '0"';
-          const whole = Math.floor(eighths / 8);
-          const frac = eighths % 8;
-          const fracStr = frac ? `${frac}/8` : '';
-          return whole ? `${whole} ${fracStr}\u2033` : `${fracStr}\u2033`;
+          const eighths = Math.round(val / 0.125); if (eighths === 0) return '0"'; const whole = Math.floor(eighths / 8); const frac = eighths % 8; const fracStr = frac ? `${frac}/8` : ''; return whole ? `${whole} ${fracStr}\u2033` : `${fracStr}\u2033`;
         };
-        const formatKMS = (val: number) => {
-          if (val >= 1) return `${val} m`;
-          if (val >= 0.01) return `${(val*100).toFixed(0)} cm`;
-          return `${(val*1000).toFixed(0)} mm`;
-        };
+        const formatKMS = (val: number) => { if (val >= 1) return `${val} m`; if (val >= 0.01) return `${(val*100).toFixed(0)} cm`; return `${(val*1000).toFixed(0)} mm`; };
         const label = unitSystem === 'IPS' ? formatIPS(major) : formatKMS(major);
         const labelWidth = Math.max(34, label.length * 8);
-        const labelX = finalStartScreenX + 4;
+        const labelX = startScreenX + 4;
         return (
           <g pointerEvents="none">
-            <line x1={finalStartScreenX} y1={height - bottomOffset} x2={finalStartScreenX + barPx} y2={height - bottomOffset} stroke="#111" strokeWidth={2} />
+            <line x1={startScreenX} y1={height - bottomOffset} x2={startScreenX + barPx} y2={height - bottomOffset} stroke="#111" strokeWidth={2} />
             {sub.map(v => {
-              const x = finalStartScreenX + v * SCALE;
+              const x = startScreenX + v * SCALE;
               const majorTick = Math.abs(v) < 1e-6 || Math.abs(v - major) < 1e-6;
               return <line key={v} x1={x} y1={height - bottomOffset - (majorTick ? 12 : 8)} x2={x} y2={height - bottomOffset} stroke="#111" strokeWidth={majorTick ? 2 : 1} />;
             })}
@@ -398,3 +391,6 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
     </svg>
   );
 };
+
+// Ref to persist scale bar state between renders
+const scaleBarStateRef: { current: { idx: number } | null } = { current: null };
