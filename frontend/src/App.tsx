@@ -630,6 +630,33 @@ export const App: React.FC = () => {
             <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '0.25rem' }}>Click cycles: none → pin (fix x,y) → roller (fix y). In truss mode need m + r = 2j.</div>
           </div>
           <div>
+            <h4 style={{ margin: '0 0 0.25rem' }}>Beams</h4>
+            {beams.length === 0 ? <div style={{ fontSize: '0.8rem' }}>None</div> : (
+              <ul style={{ margin: 0, paddingLeft: '1.2rem', maxHeight: 120, overflow: 'auto' }}>
+                {beams.map(b => {
+                  const nStart = nodes.find(n => n.id === b.node_start);
+                  const nEnd = nodes.find(n => n.id === b.node_end);
+                  let lengthStr = '';
+                  if (nStart && nEnd) {
+                    const dx = nEnd.x - nStart.x; const dy = nEnd.y - nStart.y;
+                    const L = Math.hypot(dx, dy);
+                    const unit = unitSystem === 'IPS' ? 'in' : 'm';
+                    lengthStr = L.toFixed(2) + ' ' + unit;
+                  }
+                  return (
+                    <li key={b.id} style={{ fontSize: '0.8rem', display:'flex', gap:'0.4rem', alignItems:'center', flexWrap:'wrap' }}>
+                      <strong>{b.id}</strong>
+                      <span>{b.node_start}→{b.node_end}</span>
+                      {lengthStr && <span style={{ color:'#555' }}>({lengthStr})</span>}
+                      <button style={{ fontSize:'0.6rem', padding:'2px 4px' }} onClick={() => deleteBeam(b.id)}>del</button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <div style={{ fontSize: '0.65rem', color:'#666', marginTop:'0.25rem' }}>Delete via this list (del) or beam tool delete mode.</div>
+          </div>
+          <div>
             <h4 style={{ margin: '0 0 0.25rem' }}>Masses</h4>
             {masses.length === 0 ? <div style={{ fontSize: '0.8rem' }}>None</div> : (
               <ul style={{ margin: 0, paddingLeft: '1.2rem', maxHeight: 120, overflow: 'auto' }}>
