@@ -20,11 +20,16 @@ interface Props {
   setStatus?: (s: string) => void;
 }
 
-const SCALE = 1; // pixels per model unit
 const DISP_SCALE = 200; // exaggeration factor for displacement visualization
 
 export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendingBeamStart, supports, masses, unitSystem = 'KMS', onAddNode, onNodeClick, onDeleteBeam, showGrid = false, gridSpacing = 50, snapMode = 'free', setStatus }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const [hoverPoint, setHoverPoint] = React.useState<{x:number,y:number}|null>(null);
+
+  // Dynamic scale so that one major grid spacing maps to a target pixel length.
+  const TARGET_MAJOR_PX = 250; // desired pixel width of one major spacing
+  const majorSpacingUnits = unitSystem === 'IPS' ? gridSpacing : gridSpacing * 5;
+  const SCALE = majorSpacingUnits > 0 ? TARGET_MAJOR_PX / majorSpacingUnits : 1;
 
   const computeMinorSpacing = (): number => {
     if (!gridSpacing) return 1;
@@ -53,23 +58,35 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
     return 0;
   };
 
-  const handleClick = (e: React.MouseEvent) => {
-    if (mode !== 'node') return; // only add nodes in node mode
-    if (!svgRef.current) return;
-    const rect = svgRef.current.getBoundingClientRect();
-    let x = (e.clientX - rect.left) / SCALE;
-    let y = (e.clientY - rect.top) / SCALE;
-    const step = getSnapStep();
+  const snapCoords = (clientX:number, clientY:number, altKey:boolean) => {
+    const rect = svgRef.current!.getBoundingClientRect();
+  let x = (clientX - rect.left) / SCALE;
+  let y = (clientY - rect.top) / SCALE;
+    const step = altKey ? 0 : getSnapStep();
     if (step > 0) {
       x = Math.round(x / step) * step;
       y = Math.round(y / step) * step;
     }
-    onAddNode(parseFloat(x.toFixed(5)), parseFloat(y.toFixed(5)));
-    if (setStatus) {
-      if (step > 0) setStatus(`Node added at (${x.toFixed(3)}, ${y.toFixed(3)}) snapped (${snapMode})`);
-      else setStatus(`Node added at (${x.toFixed(3)}, ${y.toFixed(3)})`);
-    }
+    return {x,y, step};
   };
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (mode !== 'node') return; // only add nodes in node mode
+    if (!svgRef.current) return;
+    const {x,y,step} = snapCoords(e.clientX, e.clientY, e.altKey);
+    const xs = parseFloat(x.toFixed(5));
+    const ys = parseFloat(y.toFixed(5));
+    onAddNode(xs, ys);
+    if (setStatus) setStatus(`Node added at (${xs.toFixed(3)}, ${ys.toFixed(3)})${step>0 && !e.altKey? ` snapped (${snapMode})`: e.altKey? ' (free override)':''}`);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (mode !== 'node' || !svgRef.current) { setHoverPoint(null); return; }
+    const {x,y} = snapCoords(e.clientX, e.clientY, e.altKey);
+    setHoverPoint({x, y});
+  };
+
+  const handleMouseLeave = () => setHoverPoint(null);
 
   const displacementMap = new Map<string, { ux: number; uy: number }>();
   if (result) {
@@ -79,17 +96,19 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
   return (
     <svg
       ref={svgRef}
-      width={1600}
-      height={1000}
+  width={1600}
+  height={1000}
       style={{ border: '1px solid #888', background: '#fff', maxWidth: '100%', height: 'auto' }}
       onClick={handleClick}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
     >
       {showGrid && gridSpacing > 0 && (
         <g pointerEvents="none">
           {(() => {
             const lines: JSX.Element[] = [];
-            const width = 1600;
-            const height = 1000;
+            const width = 1600; // pixel canvas width
+            const height = 1000; // pixel canvas height
             const eps = 1e-6;
             let minor: number;
             let major: number;
@@ -107,22 +126,26 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
               minor = gridSpacing;
               major = gridSpacing * 5;
             }
+            const modelWidth = width / SCALE;
+            const modelHeight = height / SCALE;
             // Performance safeguard: if extremely fine (e.g. 1/8"), cap lines drawn
-            const estLines = (width / minor) + (height / minor);
+            const estLines = (modelWidth / minor) + (modelHeight / minor);
             const MAX_LINES = 20000; // soft cap
             let stride = 1;
             if (estLines > MAX_LINES) {
               stride = Math.ceil(estLines / MAX_LINES);
             }
-            for (let x = 0, idx = 0; x <= width + eps; x += minor, idx++) {
+            for (let xModel = 0, idx = 0; xModel <= modelWidth + eps; xModel += minor, idx++) {
               if (idx % stride !== 0) continue;
-              const isMajor = Math.abs(x % major) < eps;
-              lines.push(<line key={'gx'+x} x1={x} y1={0} x2={x} y2={height} stroke={isMajor ? '#cfcfcf' : '#f3f3f3'} strokeWidth={isMajor ? 1 : 0.4} />);
+              const isMajor = Math.abs(xModel % major) < eps;
+              const xp = xModel * SCALE;
+              lines.push(<line key={'gx'+xModel} x1={xp} y1={0} x2={xp} y2={height} stroke={isMajor ? '#cfcfcf' : '#f3f3f3'} strokeWidth={isMajor ? 1 : 0.4} />);
             }
-            for (let y = 0, idx = 0; y <= height + eps; y += minor, idx++) {
+            for (let yModel = 0, idx = 0; yModel <= modelHeight + eps; yModel += minor, idx++) {
               if (idx % stride !== 0) continue;
-              const isMajor = Math.abs(y % major) < eps;
-              lines.push(<line key={'gy'+y} x1={0} y1={y} x2={width} y2={y} stroke={isMajor ? '#cfcfcf' : '#f3f3f3'} strokeWidth={isMajor ? 1 : 0.4} />);
+              const isMajor = Math.abs(yModel % major) < eps;
+              const yp = yModel * SCALE;
+              lines.push(<line key={'gy'+yModel} x1={0} y1={yp} x2={width} y2={yp} stroke={isMajor ? '#cfcfcf' : '#f3f3f3'} strokeWidth={isMajor ? 1 : 0.4} />);
             }
             return lines;
           })()}
@@ -134,7 +157,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         const n2 = nodes.find(n => n.id === b.node_end);
         if (!n1 || !n2) return null;
         const deletable = mode === 'delete';
-        return <line key={b.id} x1={n1.x * SCALE} y1={n1.y * SCALE} x2={n2.x * SCALE} y2={n2.y * SCALE} stroke={deletable ? '#aa0000' : '#444'} strokeWidth={2} style={deletable ? { cursor: 'pointer' } : undefined} onClick={e => { if (deletable && onDeleteBeam) { e.stopPropagation(); onDeleteBeam(b.id); } }} />;
+  return <line key={b.id} x1={n1.x * SCALE} y1={n1.y * SCALE} x2={n2.x * SCALE} y2={n2.y * SCALE} stroke={deletable ? '#aa0000' : '#444'} strokeWidth={2} style={deletable ? { cursor: 'pointer' } : undefined} onClick={e => { if (deletable && onDeleteBeam) { e.stopPropagation(); onDeleteBeam(b.id); } }} />;
       })}
       {/* Deformed shape */}
       {result && beams.map(b => {
@@ -143,7 +166,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         if (!n1 || !n2) return null;
         const d1 = displacementMap.get(n1.id) || { ux: 0, uy: 0 };
         const d2 = displacementMap.get(n2.id) || { ux: 0, uy: 0 };
-        return <line key={b.id + '-def'} x1={(n1.x + d1.ux * DISP_SCALE) * SCALE} y1={(n1.y + d1.uy * DISP_SCALE) * SCALE} x2={(n2.x + d2.ux * DISP_SCALE) * SCALE} y2={(n2.y + d2.uy * DISP_SCALE) * SCALE} stroke="#e63946" strokeWidth={2} strokeDasharray="4 4" />;
+  return <line key={b.id + '-def'} x1={(n1.x + d1.ux * DISP_SCALE) * SCALE} y1={(n1.y + d1.uy * DISP_SCALE) * SCALE} x2={(n2.x + d2.ux * DISP_SCALE) * SCALE} y2={(n2.y + d2.uy * DISP_SCALE) * SCALE} stroke="#e63946" strokeWidth={2} strokeDasharray="4 4" />;
       })}
       {/* Axial force labels (always display in lbs for user clarity) */}
       {result && result.internal_forces.map(f => {
@@ -231,6 +254,12 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
           </g>
         );
       })}
+      {hoverPoint && mode === 'node' && (
+        <g pointerEvents="none">
+          <circle cx={hoverPoint.x * SCALE} cy={hoverPoint.y * SCALE} r={8} fill="rgba(0,123,255,0.25)" stroke="#007bff" strokeDasharray="4 2" />
+          <text x={hoverPoint.x * SCALE + 10} y={hoverPoint.y * SCALE - 10} fontSize={10} fill="#225" stroke="#fff" strokeWidth={0.8} paintOrder="stroke">{hoverPoint.x.toFixed(2)}, {hoverPoint.y.toFixed(2)}</text>
+        </g>
+      )}
       {/* Scale Indicator */}
       {showGrid && (
         <g transform={`translate(${(unitSystem === 'IPS' ? gridSpacing : gridSpacing * 5) * SCALE},${1000 - 40})`}>

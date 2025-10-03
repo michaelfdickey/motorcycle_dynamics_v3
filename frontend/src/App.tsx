@@ -340,19 +340,26 @@ export const App: React.FC = () => {
           <button onClick={clearAll}>Clear</button>
         </div>
         <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem' }}>
-          Mode tips: node=click empty to add | beam=click start then end node | fixture=cycle support | mass=add lumped mass | delete=click beam or node (removes attached beams/masses/support). Units: KMS=SI, IPS=inch/lbf.
+          Mode tips: node=click empty to add (ghost preview shows snapped position; hold Alt for free) | beam=click start then end node | fixture=cycle support | mass=add lumped mass | delete=click beam or node (removes attached beams/masses/support). Units: KMS=SI, IPS=inch/lbf. Snap: major/minor/fine/free (Alt overrides to free).
         </div>
-        <div style={{ fontSize: '0.9rem', color: '#555' }}>{status}</div>
-        {determinacyMsg && (
-          <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', color: '#b00020', background:'#ffecec', padding:'4px 6px', border:'1px solid #e0a2a2', borderRadius:4 }}>
-            {determinacyMsg} Tip: pin=2 reactions, roller=1; required m = 2j - r.
+        {/* Static message banner area to avoid layout shift */}
+        <div style={{minHeight: '70px', display:'flex', flexDirection:'column', gap:'4px'}}>
+          <div style={{ fontSize: '0.9rem', color: '#555', lineHeight: '1.2' }}>{status}\u200b</div>
+          <div style={{ height:'0px' }} />
+          <div style={{ fontSize: '0.75rem' }}>
+            {determinacyMsg ? (
+              <div style={{ color: '#b00020', background:'#ffecec', padding:'4px 6px', border:'1px solid #e0a2a2', borderRadius:4 }}>
+                {determinacyMsg} Tip: pin=2 reactions, roller=1; required m = 2j - r.
+              </div>
+            ) : solvabilityMsg ? (
+              <div style={{ color: '#8a4500', background:'#fff4e5', padding:'4px 6px', border:'1px solid #f1c48b', borderRadius:4 }}>
+                {solvabilityMsg}
+              </div>
+            ) : (
+              <div style={{ height: '32px' }} />
+            )}
           </div>
-        )}
-        {solvabilityMsg && !determinacyMsg && (
-          <div style={{ marginTop: '0.25rem', fontSize: '0.72rem', color: '#8a4500', background:'#fff4e5', padding:'4px 6px', border:'1px solid #f1c48b', borderRadius:4 }}>
-            {solvabilityMsg}
-          </div>
-        )}
+        </div>
         <FrameCanvas
           nodes={nodes}
           beams={beams}
