@@ -21,6 +21,7 @@ export const App: React.FC = () => {
   const [editingMassValue, setEditingMassValue] = useState<string>('');
   const [analysisType, setAnalysisType] = useState<'frame' | 'truss'>('truss');
   const [determinacyMsg, setDeterminacyMsg] = useState<string>('');
+  const [solvabilityMsg, setSolvabilityMsg] = useState<string>('');
 
   const startMassEdit = (m: NodeMass) => {
     setEditingMassId(m.id);
@@ -153,6 +154,56 @@ export const App: React.FC = () => {
     }
   };
 
+  // Live solvability / guidance checks (runs on each relevant state change)
+  React.useEffect(() => {
+    if (analysisType === 'truss') {
+      const m = beams.length;
+      const pins = Array.from(supports.values()).filter(t => t === 'pin').length;
+      const rollers = Array.from(supports.values()).filter(t => t === 'roller').length;
+      const r = pins * 2 + rollers; // reaction components
+      const j = nodes.length;
+      let msg = '';
+      if (nodes.length === 0) {
+        msg = '';
+      } else if (pins === 0) {
+        msg = 'Add a pin support (provides 2 reactions). Typical determinate base: 1 pin + 1 roller.';
+      } else if (pins === 1 && rollers === 0 && j > 1) {
+        msg = 'Add a roller support to prevent horizontal drift. (Need 3 total reactions).';
+      } else if (pins > 1) {
+        msg = 'Too many pins (>=2 gives 4+ reactions). Convert an extra pin to a roller for a determinate base.';
+      } else {
+        const lhs = m + r;
+        const rhs = 2 * j;
+        if (lhs !== rhs) {
+          if (lhs < rhs) msg = `Truss unstable/underdeterminate: m+r=${lhs} < 2j=${rhs}. Add ${rhs - lhs} member(s) or another reaction.`;
+          else msg = `Truss overconstrained: m+r=${lhs} > 2j=${rhs}. Remove ${lhs - rhs} member(s) or reduce a support reaction (convert pin→roller).`;
+        }
+      }
+      setSolvabilityMsg(msg);
+    } else { // frame mode heuristic
+      // Simple rigid body constraint heuristics
+      const constrained = nodes.filter(n => n.constraints); // nodes with any constraints
+      let fixX = false, fixY = false, fixRot = false;
+      nodes.forEach(n => {
+        if (n.constraints?.fix_x) fixX = true;
+        if (n.constraints?.fix_y) fixY = true;
+        if (n.constraints?.fix_rotation) fixRot = true;
+      });
+      let msg = '';
+      if (nodes.length && (!fixX || !fixY)) {
+        msg = 'Frame may translate: need at least one fix_x and one fix_y.';
+      }
+      if (!msg && nodes.length && !fixRot) {
+        msg = 'Frame may freely rotate: add a rotational constraint (pin/roller currently sets rotation fixed).';
+      }
+      // If only one fully fixed node and no second constraint, warn about possible rotation about that node
+      if (!msg && constrained.length === 1 && nodes.length > 2) {
+        msg = 'Single support node: structure may spin about it. Add another support.';
+      }
+      setSolvabilityMsg(msg);
+    }
+  }, [analysisType, beams, supports, nodes]);
+
   const clearAll = () => {
   setNodes([]); setBeams([]); setResult(null); setSupports(new Map()); setMasses([]); setPendingBeamStart(null); setStatus('Cleared.');
     setEditingMassId(null); setEditingMassValue('');
@@ -203,6 +254,11 @@ export const App: React.FC = () => {
         {determinacyMsg && (
           <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', color: '#b00020', background:'#ffecec', padding:'4px 6px', border:'1px solid #e0a2a2', borderRadius:4 }}>
             {determinacyMsg} Tip: pin=2 reactions, roller=1; required m = 2j - r.
+          </div>
+        )}
+        {solvabilityMsg && !determinacyMsg && (
+          <div style={{ marginTop: '0.25rem', fontSize: '0.72rem', color: '#8a4500', background:'#fff4e5', padding:'4px 6px', border:'1px solid #f1c48b', borderRadius:4 }}>
+            {solvabilityMsg}
           </div>
         )}
         <FrameCanvas
