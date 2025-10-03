@@ -19,6 +19,7 @@ from frame_design.utils import load_fonts
 # Global variables
 model = FrameModel()
 selected_tool = None
+grid_scale_factor = 1.0  # Default scale: 1 grid cell = 1 unit
 
 # Callback functions
 def add_node_callback():
@@ -63,30 +64,15 @@ def canvas_click(sender, app_data):
     """Handle mouse clicks on the canvas"""
     global selected_tool, model
     
-    print(f"\n--- CANVAS CLICK ---")
+    print("\n--- CANVAS CLICK ---")
     
-    # Get mouse position in screen coordinates
+    # Get mouse position and convert to canvas coordinates
     mouse_pos = dpg.get_mouse_pos(local=False)
-    print(f"Raw mouse position: {mouse_pos}")
+    canvas_pos = dpg.get_item_pos("canvas")
+    x = mouse_pos[0] - canvas_pos[0]
+    y = mouse_pos[1] - canvas_pos[1]
     
-    # Get item configuration info to determine offsets precisely
-    canvas_window_info = dpg.get_item_configuration("canvas_window")
-    main_window_pos = dpg.get_item_pos("main_window")
-    
-    # Calculate canvas position - this is the key to accurate positioning
-    # Consider the sidebar width and any window decorations
-    from frame_design.frame_design_ui import SIDEBAR_WIDTH
-    
-    # Fine-tuned constants to adjust for window decorations and the canvas position
-    # within the main window - adjusted to fix the 20-pixel offset
-    WINDOW_PADDING_X = 23   # Window frame width + adjustment for 20px offset
-    WINDOW_PADDING_Y = 15   # Window title bar + frame + adjustment for 20px offset
-    
-    # Calculate the exact position relative to the canvas
-    x = mouse_pos[0] - main_window_pos[0] - SIDEBAR_WIDTH - WINDOW_PADDING_X
-    y = mouse_pos[1] - main_window_pos[1] - WINDOW_PADDING_Y
-    
-    print(f"Calculated canvas position: {x}, {y}")
+    print(f"Canvas position: {x}, {y}")
     
     # Handle different tool actions
     if selected_tool == "node":
@@ -141,7 +127,7 @@ def canvas_click(sender, app_data):
             model.delete_node(node_idx)
             print(f"Deleted node {node_idx} and related elements")
     
-    draw_everything(model)
+    draw_everything(model, None, grid_scale_factor)
 
 def main():
     # Initialize DearPyGui
@@ -172,7 +158,7 @@ def main():
     dpg.set_primary_window("main_window", True)
     
     # Draw initial grid
-    draw_grid()
+    draw_grid(grid_scale_factor)
     
     # Set Node tool as default and highlight it
     add_node_callback()
@@ -181,29 +167,23 @@ def main():
     try:
         last_mouse_pos = None
         while dpg.is_dearpygui_running():
-            # Update mouse position for beam preview
+            # For beam preview
             if selected_tool == "beam" and model.selected_node is not None:
-                # Use the EXACT same offset calculation as in canvas_click function
+                # Get mouse position
                 mouse_pos = dpg.get_mouse_pos(local=False)
-                if mouse_pos:
-                    # Get main window position
-                    main_window_pos = dpg.get_item_pos("main_window")
-                    
-                    # Use the same constants as in canvas_click
-                    from frame_design.frame_design_ui import SIDEBAR_WIDTH
-                    WINDOW_PADDING_X = 23   # Match canvas_click exactly
-                    WINDOW_PADDING_Y = 15   # Match canvas_click exactly
-                    
-                    # Calculate canvas position with consistent offsets
-                    x = mouse_pos[0] - main_window_pos[0] - SIDEBAR_WIDTH - WINDOW_PADDING_X
-                    y = mouse_pos[1] - main_window_pos[1] - WINDOW_PADDING_Y
-                    
-                    # Only redraw if position has changed
-                    current_pos = (x, y)
-                    if current_pos != last_mouse_pos:
-                        last_mouse_pos = current_pos
-                        draw_everything(model, current_pos)
+                canvas_pos = dpg.get_item_rect_min("canvas")
+                
+                # Calculate position relative to canvas
+                x = mouse_pos[0] - canvas_pos[0]
+                y = mouse_pos[1] - canvas_pos[1]
+                
+                # Only redraw when mouse has moved
+                current_pos = (x, y)
+                if current_pos != last_mouse_pos:
+                    last_mouse_pos = current_pos
+                    draw_everything(model, current_pos, grid_scale_factor)
             
+            update_stats(model)
             dpg.render_dearpygui_frame()
             
     except Exception as e:

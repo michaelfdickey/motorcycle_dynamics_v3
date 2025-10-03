@@ -18,8 +18,8 @@ BEAM_HOVER_COLOR = (255, 255, 255, 255)  # White for beam preview
 FIXTURE_COLOR = (255, 128, 0, 255)  # RED
 MASS_COLOR = (255, 0, 0, 255)  # Red
 
-def draw_grid():
-    """Draw a grid on the canvas."""
+def draw_grid(scale_factor=1.0):
+    """Draw a grid on the canvas with a scale indicator."""
     # Get the size of the drawing area
     width = CANVAS_WIDTH
     height = CANVAS_HEIGHT
@@ -31,6 +31,50 @@ def draw_grid():
     # Draw horizontal grid lines
     for y in range(0, height, GRID_SPACING):
         dpg.draw_line((0, y), (width, y), color=GRID_COLOR, parent="canvas")
+    
+    # Draw scale indicator in the bottom left
+    scale_start_x = 20
+    scale_start_y = height - 40
+    scale_width = GRID_SPACING * 5  # 5 grid spaces
+    
+    # Draw scale bar
+    dpg.draw_line(
+        (scale_start_x, scale_start_y),
+        (scale_start_x + scale_width, scale_start_y),
+        color=(255, 255, 255),
+        thickness=2,
+        parent="canvas"
+    )
+    
+    # Draw tick marks
+    for i in range(6):  # 0 to 5 ticks
+        tick_x = scale_start_x + (i * GRID_SPACING)
+        dpg.draw_line(
+            (tick_x, scale_start_y - 3),
+            (tick_x, scale_start_y + 3),
+            color=(255, 255, 255),
+            thickness=1,
+            parent="canvas"
+        )
+    
+    # Draw scale label
+    physical_length = 5 * scale_factor  # 5 grid spaces in real-world units
+    dpg.draw_text(
+        (scale_start_x + scale_width/2 - 20, scale_start_y - 20),
+        f"Scale: {physical_length} units",
+        color=(255, 255, 0),
+        parent="canvas"
+    )
+    
+    # Draw grid info text
+    grid_info_x = 20
+    grid_info_y = height - 20
+    dpg.draw_text(
+        (grid_info_x, grid_info_y),
+        f"Grid: {GRID_SPACING}px = {scale_factor} units",
+        color=(200, 200, 200),
+        parent="canvas"
+    )
 
 def draw_nodes(model):
     """Draw all nodes on the canvas."""
@@ -139,16 +183,84 @@ def draw_masses(model):
             dpg.draw_text((node_pos[0] + 10, node_pos[1] + 10), 
                          f"{mass['value']}kg", color=(255, 255, 255, 255), parent="canvas")
 
-def draw_everything(model, mouse_pos=None):
+def draw_everything(model, mouse_pos=None, scale_factor=1.0):
     """Clear canvas and redraw all elements."""
     try:
         dpg.delete_item("canvas", children_only=True)
         
         # Redraw everything
-        draw_grid()
+        draw_grid(scale_factor)
         draw_beams(model, mouse_pos)
         draw_nodes(model)
         draw_fixtures(model)
         draw_masses(model)
     except Exception as e:
         print(f"Error in draw_everything: {e}")
+
+def create_ui(add_node_callback, add_beam_callback, add_fixture_callback, 
+              add_mass_callback, delete_callback, clear_all_callback, canvas_click_callback):
+    """Create the main user interface with a dedicated drawing area"""
+    with dpg.window(label="Motorcycle Frame Designer", tag="main_window", no_close=True):
+        with dpg.group(horizontal=True):
+            # Left sidebar for tools
+            with dpg.child_window(width=SIDEBAR_WIDTH, height=CANVAS_HEIGHT, tag="sidebar"):
+                dpg.add_text("Tools", color=(255, 255, 0))
+                dpg.add_separator()
+                
+                # Tool buttons with highlighted frames
+                # ... existing button code ...
+                
+                dpg.add_spacer(height=10)
+                dpg.add_separator()
+                dpg.add_spacer(height=10)
+                
+                # Grid settings
+                dpg.add_text("Grid Settings", color=(255, 255, 0))
+                
+                def update_grid_scale(sender, app_data):
+                    # Update the grid scale factor
+                    # We need to access the global grid_scale_factor from main_frame_design.py
+                    # We'll import it explicitly here
+                    import sys
+                    main_module = sys.modules['__main__']
+                    if hasattr(main_module, 'grid_scale_factor'):
+                        main_module.grid_scale_factor = app_data
+                        # Redraw everything with new scale
+                        if hasattr(main_module, 'model'):
+                            draw_everything(main_module.model, None, app_data)
+                    else:
+                        print("Warning: Could not update grid scale factor")
+                
+                # Add a slider to control grid scale
+                dpg.add_text("Grid Scale (units per cell)")
+                dpg.add_slider_float(
+                    default_value=1.0,
+                    min_value=0.1, 
+                    max_value=10.0,
+                    callback=update_grid_scale,
+                    tag="grid_scale_slider",
+                    width=180
+                )
+                
+                # Add a button to reset grid scale
+                dpg.add_button(
+                    label="Reset Scale", 
+                    callback=lambda: dpg.set_value("grid_scale_slider", 1.0),
+                    width=180
+                )
+                
+                dpg.add_spacer(height=10)
+                
+                # Statistics section (already in your code)
+                dpg.add_separator()
+                dpg.add_text("Statistics", color=(255, 255, 0))
+                # ...existing stats code...
+                
+            # Right side: Canvas
+            with dpg.child_window(width=CANVAS_WIDTH, height=CANVAS_HEIGHT, tag="canvas_window"):
+                # Create a drawing canvas
+                with dpg.drawlist(width=CANVAS_WIDTH, height=CANVAS_HEIGHT, tag="canvas"):
+                    # The drawlist will be our canvas
+                    pass
+                
+                # No mouse handlers here - they're in frame_design_ui.py

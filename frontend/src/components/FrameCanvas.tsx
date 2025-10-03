@@ -64,9 +64,43 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         return (
           <g key={n.id} onClick={e => { e.stopPropagation(); onNodeClick(n.id); }} cursor="pointer">
             <circle cx={n.x * SCALE} cy={n.y * SCALE} r={radius} fill={selected ? '#ffb703' : fixed ? '#1d3557' : '#457b9d'} stroke={fixed ? '#000' : '#333'} strokeWidth={selected ? 3 : 1} />
-            {fixed && (
-              <rect x={n.x * SCALE - 6} y={n.y * SCALE - 14} width={12} height={6} fill="#1d3557" />
-            )}
+            {fixed && (() => {
+              // Draw a support triangle: apex at node center, base below.
+              const cx = n.x * SCALE;
+              const cy = n.y * SCALE;
+              const baseWidth = radius * 4; // ~4x node radius per request
+              const halfBase = baseWidth / 2;
+              const height = radius * 3; // visually balanced; adjust if desired
+              const baseY = cy + height;
+              const points = [
+                `${cx},${cy}`, // apex touching node
+                `${cx - halfBase},${baseY}`,
+                `${cx + halfBase},${baseY}`
+              ].join(' ');
+              return <polygon points={points} fill="#1d3557" stroke="#000" strokeWidth={1} />;
+            })()}
+            {massValue !== undefined && (() => {
+              // Hanging trapezoid mass icon below node
+              const cx = n.x * SCALE;
+              const cy = n.y * SCALE;
+              const lineLen = radius * 1.2;
+              const topY = cy + radius + lineLen;
+              const topWidth = radius * 1.5;
+              const bottomWidth = radius * 2.5;
+              const height = radius * 1.5;
+              const points = [
+                `${cx - topWidth / 2},${topY}`,
+                `${cx + topWidth / 2},${topY}`,
+                `${cx + bottomWidth / 2},${topY + height}`,
+                `${cx - bottomWidth / 2},${topY + height}`
+              ].join(' ');
+              return (
+                <g>
+                  <line x1={cx} y1={cy + radius} x2={cx} y2={topY} stroke="#222" strokeWidth={1} />
+                  <polygon points={points} fill="#595959" stroke="#222" strokeWidth={1} />
+                </g>
+              );
+            })()}
             {massLabel && (
               <text x={n.x * SCALE + 8} y={n.y * SCALE - 8} fontSize={10} fill="#222">{massLabel}</text>
             )}

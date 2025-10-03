@@ -174,16 +174,53 @@ def create_ui(add_node_callback, add_beam_callback, add_fixture_callback,
                 dpg.add_text("Debug Info")
                 dpg.add_text("", tag="debug_text")
             
-            # Main drawing canvas
+            # Right side: Canvas
             with dpg.child_window(width=CANVAS_WIDTH, height=CANVAS_HEIGHT, tag="canvas_window"):
-                # Create a single drawing canvas with click handler
+                # Create a drawlist for our canvas
                 with dpg.drawlist(width=CANVAS_WIDTH, height=CANVAS_HEIGHT, tag="canvas"):
-                    # Canvas will be drawn here
-                    pass
+                    pass  # Canvas will be drawn in drawing.py
                 
-                # Add handler for canvas clicks
-                with dpg.item_handler_registry(tag="canvas_handler"):
-                    dpg.add_item_clicked_handler(callback=canvas_click_callback)
-                
-                # Bind the handler registry to the canvas
-                dpg.bind_item_handler_registry("canvas", "canvas_handler")
+                # Set up mouse handlers using the proper method
+                with dpg.handler_registry():
+                    dpg.add_mouse_click_handler(callback=canvas_click_callback)
+                    
+                    # Add hover/move handler for beam preview
+                    dpg.add_mouse_move_handler(callback=lambda sender, app_data: on_mouse_move())
+
+def on_mouse_hover(sender, app_data):
+    """Handle mouse movement over canvas for beam preview"""
+    # Get the model and selected tool from main module
+    import sys
+    main = sys.modules['__main__']
+    
+    if hasattr(main, 'selected_tool') and main.selected_tool == "beam":
+        if hasattr(main, 'model') and main.model.selected_node is not None:
+            # Get local mouse position within canvas
+            mouse_pos = dpg.get_mouse_pos(local=True)
+            if mouse_pos:
+                # Draw beam preview
+                from frame_design.drawing import draw_everything
+                grid_scale = main.grid_scale_factor if hasattr(main, 'grid_scale_factor') else 1.0
+                draw_everything(main.model, mouse_pos, grid_scale)
+
+def on_mouse_move():
+    """Handle mouse movement for beam preview"""
+    # Get the mouse position
+    mouse_pos = dpg.get_mouse_pos(local=False)
+    
+    # Transform to canvas coordinates
+    canvas_pos = dpg.get_item_pos("canvas")
+    x = mouse_pos[0] - canvas_pos[0]
+    y = mouse_pos[1] - canvas_pos[1]
+    
+    # Get the model and selected tool from main module
+    import sys
+    main = sys.modules['__main__']
+    
+    if hasattr(main, 'selected_tool') and main.selected_tool == "beam":
+        if hasattr(main, 'model') and main.model.selected_node is not None:
+            # Only process if we're in beam mode with a selected node
+            # Draw beam preview
+            from frame_design.drawing import draw_everything
+            grid_scale = main.grid_scale_factor if hasattr(main, 'grid_scale_factor') else 1.0
+            draw_everything(main.model, (x, y), grid_scale)
