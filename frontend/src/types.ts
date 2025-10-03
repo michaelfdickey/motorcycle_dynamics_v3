@@ -78,3 +78,25 @@ export interface SimulationResult {
   displacements: NodeResult[];
   internal_forces: BeamInternalForce[];
 }
+
+// Persisted design shape for save/load
+export interface DesignData {
+  name: string;
+  unitSystem: UnitSystem;
+  analysisType: 'frame' | 'truss';
+  nodes: NodeInput[];
+  beams: BeamInput[];
+  supports: [string, SupportType][];
+  masses: NodeMass[];
+  gridSpacing: number;
+  snapMode?: SnapMode;
+  zoomScale?: number;
+  panX?: number;
+  panY?: number;
+  timestamp?: number;
+}
+
+export interface DesignListItem {
+  name: string;
+  modified: number; // epoch seconds
+}

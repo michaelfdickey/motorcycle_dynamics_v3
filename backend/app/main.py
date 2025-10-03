@@ -1,4 +1,11 @@
-from fastapi import FastAPI
+import os
+import json
+import time
+import re
+from pathlib import Path
+from fastapi import FastAPI, HTTPException
+from fastapi import Body
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import schemas
@@ -27,5 +34,85 @@ async def simulate(payload: schemas.SimulationInput):
         return solve_truss(payload)
     # default fallback to frame
     return simulate_structure(payload)
+
+
+# ----------------------------- Design Save / Load -----------------------------
+DESIGNS_DIR = Path(__file__).resolve().parent.parent / "designs"
+DESIGNS_DIR.mkdir(exist_ok=True)
+
+_SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+def _design_path(name: str) -> Path:
+    if not _SAFE_NAME_RE.match(name):
+        raise HTTPException(status_code=400, detail="Invalid design name (use letters, numbers, hyphen, underscore)")
+    return DESIGNS_DIR / f"{name}.json"
+
+@app.get("/designs", response_model=list[schemas.DesignListItem])
+async def list_designs():
+    items: list[schemas.DesignListItem] = []
+    for p in DESIGNS_DIR.glob("*.json"):
+        try:
+            stat = p.stat()
+            name = p.stem
+            items.append(schemas.DesignListItem(name=name, modified=stat.st_mtime))
+        except OSError:
+            continue
+    # newest first
+    items.sort(key=lambda x: x.modified, reverse=True)
+    return items
+
+@app.get("/designs/{name}", response_model=schemas.Design)
+async def load_design(name: str):
+    path = _design_path(name)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Design not found")
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Read error: {e}")
+    data["name"] = name
+    data["timestamp"] = path.stat().st_mtime
+    try:
+        return schemas.Design(**data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Corrupt design file: {e}")
+
+@app.post("/designs/{name}", response_model=schemas.Design)
+async def save_design(name: str, design: dict = Body(...)):
+    """Persist a design JSON. Accepts a loose dict for forward compatibility.
+
+    We validate after injecting enforced fields, so missing optional view state
+    does not cause 422 errors.
+    """
+    path = _design_path(name)
+    if not isinstance(design, dict):
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    payload = dict(design)
+    payload["name"] = name
+    payload.setdefault("unitSystem", "IPS")
+    payload.setdefault("analysisType", "truss")
+    payload.setdefault("nodes", [])
+    payload.setdefault("beams", [])
+    payload.setdefault("supports", [])
+    payload.setdefault("masses", [])
+    payload.setdefault("gridSpacing", 1.0)
+    payload["timestamp"] = time.time()
+    # Attempt validation (will raise if structurally incompatible)
+    try:
+        validated = schemas.Design(**payload)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Validation failed: {e}")
+    # Ensure directory exists
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(validated.dict(), f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        print(f"[design-save] Saved design '{name}' to {path}")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Write error: {e}")
+    return validated
 
 # To run (dev): uvicorn backend.app.main:app --reload

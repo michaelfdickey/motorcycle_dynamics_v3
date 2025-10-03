@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from pydantic import BaseModel, Field
 
 class NodeConstraint(BaseModel):
@@ -51,3 +51,29 @@ class BeamInternalForce(BaseModel):
 class SimulationResult(BaseModel):
     displacements: List[NodeResult]
     internal_forces: List[BeamInternalForce]
+
+
+class NodeMass(BaseModel):
+    id: str
+    node_id: str
+    value: float  # stored in current unit system mass units (kg if KMS, lbm if IPS)
+
+class Design(BaseModel):
+    """Full persisted design snapshot for save/load functionality."""
+    name: str
+    unitSystem: str
+    analysisType: str
+    nodes: List[NodeInput]
+    beams: List[BeamInput]
+    supports: List[Tuple[str, str]]  # list of (node_id, supportType)
+    masses: List[NodeMass]
+    gridSpacing: float
+    snapMode: Optional[str] = None
+    zoomScale: Optional[float] = None
+    panX: Optional[float] = None
+    panY: Optional[float] = None
+    timestamp: Optional[float] = None  # populated on load/listing
+
+class DesignListItem(BaseModel):
+    name: str
+    modified: float

@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { FrameCanvas } from './components/FrameCanvas';
-import { BeamInput, NodeInput, SimulationInput, SimulationResult, ToolMode, NodeMass, UnitSystem, SupportType, SnapMode } from './types';
+import { BeamInput, NodeInput, SimulationInput, SimulationResult, ToolMode, NodeMass, UnitSystem, SupportType, SnapMode, DesignData, DesignListItem } from './types';
 import { UNIT_FACTORS, convertNodePositions, convertBeamProperties, getDefaultE, convertModulusToSI, convertSectionToSI, convertMasses } from './units';
-import { simulate } from './api';
+import { simulate, saveDesign, listDesigns, loadDesign } from './api';
 
 let nodeCounter = 1;
 let beamCounter = 1;
@@ -43,6 +43,10 @@ export const App: React.FC = () => {
   const [zoomScale, setZoomScale] = useState<number>(1); // continuous zoom multiplier
   const [panX, setPanX] = useState<number>(0); // model units offset
   const [panY, setPanY] = useState<number>(0);
+  // Save / Load UI state
+  const [showLoadDialog, setShowLoadDialog] = useState<boolean>(false);
+  const [designs, setDesigns] = useState<DesignListItem[] | null>(null);
+  const [loadingDesigns, setLoadingDesigns] = useState<boolean>(false);
 
   const startMassEdit = (m: NodeMass) => {
     setEditingMassId(m.id);
@@ -352,6 +356,93 @@ export const App: React.FC = () => {
     setEditingMassId(null); setEditingMassValue('');
   };
 
+  const buildDesignData = (name: string): DesignData => ({
+    name,
+    unitSystem,
+    analysisType,
+    nodes: JSON.parse(JSON.stringify(nodes)),
+    beams: JSON.parse(JSON.stringify(beams)),
+    supports: Array.from(supports.entries()),
+    masses: JSON.parse(JSON.stringify(masses)),
+    gridSpacing,
+    snapMode,
+    zoomScale,
+    panX,
+    panY,
+  });
+
+  const handleSave = async () => {
+    const name = window.prompt('Enter design name (letters, numbers, - or _):');
+    if (!name) return;
+    try {
+      const design = buildDesignData(name.trim());
+      setStatus('Saving design...');
+      await saveDesign(design);
+      // Verify it appears in listing
+      try {
+        const all = await listDesigns();
+        if (!all.some(d => d.name === name.trim())) {
+          setStatus(`Design '${name}' save attempted, but not found in listing (backend may not be running in correct working directory).`);
+        } else {
+          setStatus(`Design '${name}' saved.`);
+        }
+      } catch {
+        setStatus(`Design '${name}' saved (listing failed).`);
+      }
+    } catch (e: any) {
+      setStatus('Save failed: ' + e.message);
+    }
+  };
+
+  const openLoadDialog = async () => {
+    setShowLoadDialog(true);
+    setLoadingDesigns(true);
+    try {
+      const items = await listDesigns();
+      setDesigns(items);
+    } catch (e) {
+      setDesigns([]);
+    } finally {
+      setLoadingDesigns(false);
+    }
+  };
+
+  const applyLoadedDesign = (d: DesignData) => {
+    setUnitSystem(d.unitSystem as UnitSystem);
+    setAnalysisType(d.analysisType as 'frame' | 'truss');
+    setNodes(d.nodes);
+    setBeams(d.beams);
+    setSupports(new Map(d.supports));
+    setMasses(d.masses);
+    setGridSpacing(d.gridSpacing);
+    if (d.snapMode) setSnapMode(d.snapMode as SnapMode);
+    if (typeof d.zoomScale === 'number') setZoomScale(d.zoomScale);
+    if (typeof d.panX === 'number') setPanX(d.panX);
+    if (typeof d.panY === 'number') setPanY(d.panY);
+    setResult(null);
+    setPendingBeamStart(null);
+    setEditingMassId(null); setEditingMassValue('');
+    // Reset counters to avoid ID collisions
+    const nodeNums = d.nodes.map(n => parseInt(n.id.replace(/\D+/g,''))).filter(n => !isNaN(n));
+    if (nodeNums.length) nodeCounter = Math.max(...nodeNums) + 1;
+    const beamNums = d.beams.map(b => parseInt(b.id.replace(/\D+/g,''))).filter(n => !isNaN(n));
+    if (beamNums.length) beamCounter = Math.max(...beamNums) + 1;
+    const massNums = d.masses.map(m => parseInt(m.id.replace(/\D+/g,''))).filter(n => !isNaN(n));
+    if (massNums.length) massCounter = Math.max(...massNums) + 1;
+    setStatus(`Loaded design '${d.name}'.`);
+  };
+
+  const handleLoadDesign = async (name: string) => {
+    try {
+      setStatus('Loading design...');
+      const d = await loadDesign(name);
+      applyLoadedDesign(d);
+      setShowLoadDialog(false);
+    } catch (e: any) {
+      setStatus('Load failed: ' + e.message);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', fontFamily: 'sans-serif', gap: '1rem' }}>
       <div>
@@ -434,6 +525,8 @@ export const App: React.FC = () => {
           </fieldset>
           <button onClick={runSimulation} disabled={!nodes.length}>Simulate</button>
           <button onClick={clearAll}>Clear</button>
+          <button onClick={handleSave} disabled={!nodes.length}>Save</button>
+          <button onClick={openLoadDialog}>Load</button>
         </div>
         <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem' }}>
           Mode tips: node=click empty to add (ghost preview shows snapped position; hold Alt for free) | beam=click start then end node | fixture=cycle support | mass=add lumped mass | delete=click beam or node (removes attached beams/masses/support). Units: KMS=SI, IPS=inch/lbf. Snap: major/minor/fine/free (Alt overrides to free).
@@ -501,6 +594,31 @@ export const App: React.FC = () => {
             })()}
           </div>
         </div>
+        {showLoadDialog && (
+          <div style={{ position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.35)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 }} onClick={() => setShowLoadDialog(false)}>
+            <div style={{ background:'#fff', padding:'1rem', borderRadius:8, minWidth:360, maxHeight:'70vh', overflow:'auto' }} onClick={e => e.stopPropagation()}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'0.5rem' }}>
+                <h3 style={{ margin:0 }}>Load Design</h3>
+                <button onClick={() => setShowLoadDialog(false)}>✕</button>
+              </div>
+              {loadingDesigns && <div>Loading list...</div>}
+              {!loadingDesigns && designs && designs.length === 0 && <div style={{ fontSize:'0.85rem' }}>No designs saved yet.</div>}
+              {!loadingDesigns && designs && designs.length > 0 && (
+                <ul style={{ listStyle:'none', padding:0, margin:0, display:'flex', flexDirection:'column', gap:'0.35rem' }}>
+                  {designs.map(d => (
+                    <li key={d.name} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', border:'1px solid #ddd', padding:'0.4rem 0.6rem', borderRadius:4 }}>
+                      <div style={{ display:'flex', flexDirection:'column' }}>
+                        <strong>{d.name}</strong>
+                        <span style={{ fontSize:'0.65rem', color:'#555' }}>{new Date(d.modified * 1000).toLocaleString()}</span>
+                      </div>
+                      <button style={{ padding:'4px 10px' }} onClick={() => handleLoadDesign(d.name)}>Load</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: '2rem', marginTop: '1rem', flexWrap: 'wrap' }}>
           <div>
             <h4 style={{ margin: '0 0 0.25rem' }}>Supports</h4>

@@ -1,0 +1,104 @@
+{
+  "name": "simple_triangle",
+  "unitSystem": "IPS",
+  "analysisType": "truss",
+  "nodes": [
+    {
+      "id": "N1",
+      "x": 72.0,
+      "y": 108.0,
+      "constraints": {
+        "fix_x": true,
+        "fix_y": true,
+        "fix_rotation": true
+      }
+    },
+    {
+      "id": "N2",
+      "x": 144.0,
+      "y": 108.0,
+      "constraints": {
+        "fix_x": false,
+        "fix_y": true,
+        "fix_rotation": true
+      }
+    },
+    {
+      "id": "N3",
+      "x": 108.0,
+      "y": 108.0,
+      "constraints": null
+    },
+    {
+      "id": "N4",
+      "x": 108.0,
+      "y": 84.0,
+      "constraints": null
+    }
+  ],
+  "beams": [
+    {
+      "id": "B1",
+      "node_start": "N1",
+      "node_end": "N3",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002
+    },
+    {
+      "id": "B2",
+      "node_start": "N3",
+      "node_end": "N2",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002
+    },
+    {
+      "id": "B3",
+      "node_start": "N2",
+      "node_end": "N4",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002
+    },
+    {
+      "id": "B4",
+      "node_start": "N4",
+      "node_end": "N3",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002
+    },
+    {
+      "id": "B5",
+      "node_start": "N4",
+      "node_end": "N1",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002
+    }
+  ],
+  "supports": [
+    [
+      "N1",
+      "pin"
+    ],
+    [
+      "N2",
+      "roller"
+    ]
+  ],
+  "masses": [
+    {
+      "id": "M1",
+      "node_id": "N3",
+      "value": 100.0
+    }
+  ],
+  "gridSpacing": 12.0,
+  "snapMode": "minor",
+  "zoomScale": 0.670452395833333,
+  "panX": 57.24104064435345,
+  "panY": 49.97409580890886,
+  "timestamp": 1759535125.3756342
+}
