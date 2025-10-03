@@ -1,0 +1,238 @@
+import React, { useState } from 'react';
+import { FrameCanvas } from './components/FrameCanvas';
+import { BeamInput, NodeInput, SimulationInput, SimulationResult, ToolMode, NodeMass, UnitSystem } from './types';
+import { UNIT_FACTORS, convertNodePositions, convertBeamProperties, getDefaultE, convertModulusToSI, convertSectionToSI, convertMasses } from './units';
+import { simulate } from './api';
+
+let nodeCounter = 1;
+let beamCounter = 1;
+let massCounter = 1;
+
+export const App: React.FC = () => {
+  const [nodes, setNodes] = useState<NodeInput[]>([]);
+  const [beams, setBeams] = useState<BeamInput[]>([]);
+  const [pendingBeamStart, setPendingBeamStart] = useState<string | null>(null);
+  const [mode, setMode] = useState<ToolMode>('node');
+  const [fixtures, setFixtures] = useState<Set<string>>(new Set());
+  const [masses, setMasses] = useState<NodeMass[]>([]);
+  // Default to IPS per user request; values entered / defaults are expressed in IPS unless switched.
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>('IPS');
+  const [editingMassId, setEditingMassId] = useState<string | null>(null);
+  const [editingMassValue, setEditingMassValue] = useState<string>('');
+
+  const startMassEdit = (m: NodeMass) => {
+    setEditingMassId(m.id);
+    setEditingMassValue(String(m.value));
+  };
+
+  const cancelMassEdit = () => {
+    setEditingMassId(null);
+    setEditingMassValue('');
+  };
+
+  const commitMassEdit = (id: string) => {
+    if (editingMassId !== id) return; // stale
+    const parsed = parseFloat(editingMassValue);
+    if (!isFinite(parsed) || parsed < 0) {
+      setStatus('Mass value must be a non-negative number.');
+      return;
+    }
+    setMasses(prev => prev.map(m => m.id === id ? { ...m, value: parseFloat(parsed.toFixed(3)) } : m));
+    setStatus(`Mass ${id} set to ${parsed} ${unitSystem === 'IPS' ? 'lbm' : 'kg'}`);
+    cancelMassEdit();
+  };
+  const [result, setResult] = useState<SimulationResult | null>(null);
+  const [status, setStatus] = useState<string>('');
+
+  const addNode = (x: number, y: number) => {
+    const id = `N${nodeCounter++}`;
+    setNodes(prev => [...prev, { id, x: parseFloat(x.toFixed(2)), y: parseFloat(y.toFixed(2)) }]);
+  };
+  const handleNodeClick = (id: string) => {
+    if (mode === 'beam') {
+      if (pendingBeamStart == null) {
+        setPendingBeamStart(id);
+        setStatus(`Beam start selected: ${id}. Select end node.`);
+      } else if (pendingBeamStart === id) {
+        setPendingBeamStart(null);
+        setStatus('Cancelled beam selection.');
+      } else {
+        const beamId = `B${beamCounter++}`;
+        // Provide defaults that depend on unit system
+        const defaultE = getDefaultE(unitSystem);
+        const defaultA = unitSystem === 'KMS' ? 1e-3 : 0.002; // rough difference
+        const defaultI = unitSystem === 'KMS' ? 1e-6 : 0.004; // placeholder in^4
+        setBeams(prev => [...prev, { id: beamId, node_start: pendingBeamStart, node_end: id, E: defaultE, I: defaultI, A: defaultA }]);
+        setPendingBeamStart(null);
+        setStatus(`Beam ${beamId} added.`);
+      }
+    } else if (mode === 'fixture') {
+      setFixtures(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        // apply constraints to node data model
+        setNodes(nodes => nodes.map(n => n.id === id ? { ...n, constraints: next.has(id) ? { fix_x: true, fix_y: true, fix_rotation: true } : undefined } : n));
+        setStatus(next.has(id) ? `Fixed ${id}` : `Released ${id}`);
+        return next;
+      });
+    } else if (mode === 'mass') {
+      const massId = `M${massCounter++}`;
+        const defaultMass = unitSystem === 'KMS' ? 10 : (10 / UNIT_FACTORS.IPS.mass); // ~10 kg expressed in current units
+  const newMass: NodeMass = { id: massId, node_id: id, value: parseFloat(defaultMass.toFixed(2)) };
+      setMasses(prev => [...prev, newMass]);
+      const massStatus = unitSystem === 'IPS' ? `${newMass.value} lbm` : `${newMass.value} kg`;
+      setStatus(`Mass ${massId} (${massStatus} ~10kg physical) attached to ${id}`);
+    } else if (mode === 'node') {
+      // In node mode clicking existing node does nothing yet
+    }
+  };
+
+  const runSimulation = async () => {
+    // Masses ignored in static call for now.
+    // Convert geometry + properties to SI if needed
+    const preparedNodes = nodes.map(n => ({ ...n }));
+    const preparedBeams = beams.map(b => ({ ...b }));
+    let nodesForPayload = preparedNodes;
+    let beamsForPayload = preparedBeams;
+    if (unitSystem === 'IPS') {
+      nodesForPayload = preparedNodes.map(n => ({ ...n, x: n.x * UNIT_FACTORS.IPS.length, y: n.y * UNIT_FACTORS.IPS.length }));
+      beamsForPayload = preparedBeams.map(b => {
+        const { A, I } = convertSectionToSI(b.A, b.I, 'IPS');
+        return { ...b, A, I, E: convertModulusToSI(b.E, 'IPS') };
+      });
+    }
+    const payload: SimulationInput = { nodes: nodesForPayload, beams: beamsForPayload, loads: [] };
+    setStatus('Simulating...');
+    try {
+      const res = await simulate(payload);
+      setResult(res);
+      setStatus('Simulation complete.');
+    } catch (e: any) {
+      setStatus('Simulation error: ' + e.message);
+    }
+  };
+
+  const clearAll = () => {
+    setNodes([]); setBeams([]); setResult(null); setFixtures(new Set()); setMasses([]); setPendingBeamStart(null); setStatus('Cleared.');
+    setEditingMassId(null); setEditingMassValue('');
+  };
+
+  return (
+    <div style={{ display: 'flex', fontFamily: 'sans-serif', gap: '1rem' }}>
+      <div>
+        <h2>Motorcycle Frame Simulator (MVP)</h2>
+        <div style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <fieldset style={{ border: '1px solid #ccc', padding: '0.5rem' }}>
+            <legend>Tool</legend>
+            {(['node','beam','fixture','mass'] as ToolMode[]).map(m => (
+              <label key={m} style={{ marginRight: '0.5rem' }}>
+                <input type="radio" name="mode" value={m} checked={mode === m} onChange={() => { setMode(m); setPendingBeamStart(null); }} /> {m}
+              </label>
+            ))}
+          </fieldset>
+          <fieldset style={{ border: '1px solid #ccc', padding: '0.5rem' }}>
+            <legend>Units</legend>
+            {(['KMS','IPS'] as UnitSystem[]).map(u => (
+              <label key={u} style={{ marginRight: '0.5rem' }}>
+                <input type="radio" name="units" value={u} checked={unitSystem === u} onChange={() => {
+                  setNodes(curr => convertNodePositions(curr, unitSystem, u));
+                  setBeams(curr => convertBeamProperties(curr, unitSystem, u));
+                  setMasses(curr => convertMasses(curr, unitSystem, u));
+                  setUnitSystem(u);
+                  setStatus(`Switched units to ${u}`);
+                }} /> {u}
+              </label>
+            ))}
+          </fieldset>
+          <button onClick={runSimulation} disabled={!nodes.length}>Simulate</button>
+          <button onClick={clearAll}>Clear</button>
+        </div>
+        <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem' }}>
+          Mode tips: node=click empty to add | beam=click start then end node | fixture=toggle support | mass=add lumped mass. Units: KMS=SI, IPS=inch/lbf (converted to SI for solve).
+        </div>
+        <div style={{ fontSize: '0.9rem', color: '#555' }}>{status}</div>
+        <FrameCanvas
+          nodes={nodes}
+          beams={beams}
+            result={result}
+            mode={mode}
+            pendingBeamStart={pendingBeamStart}
+            fixtures={fixtures}
+            masses={new Map(masses.map(m => [m.node_id, (masses.filter(mm => mm.node_id === m.node_id).reduce((a,c)=>a+c.value,0))]))}
+            unitSystem={unitSystem}
+            onAddNode={addNode}
+            onNodeClick={handleNodeClick}
+        />
+        <div style={{ display: 'flex', gap: '2rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+          <div>
+            <h4 style={{ margin: '0 0 0.25rem' }}>Fixtures</h4>
+            {Array.from(fixtures).length === 0 ? <div style={{ fontSize: '0.8rem' }}>None</div> : (
+              <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
+                {Array.from(fixtures).map(f => <li key={f}>{f}</li>)}
+              </ul>
+            )}
+          </div>
+          <div>
+            <h4 style={{ margin: '0 0 0.25rem' }}>Masses</h4>
+            {masses.length === 0 ? <div style={{ fontSize: '0.8rem' }}>None</div> : (
+              <ul style={{ margin: 0, paddingLeft: '1.2rem', maxHeight: 120, overflow: 'auto' }}>
+                {masses.map(m => {
+                  const isEditing = m.id === editingMassId;
+                  const displayUnit = unitSystem === 'IPS' ? 'lbm' : 'kg';
+                  // Physical mass in kg for reference
+                  const physicalKg = unitSystem === 'IPS' ? m.value * UNIT_FACTORS.IPS.mass : m.value;
+                  return (
+                    <li key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      <strong>{m.id}</strong>
+                      <span>@ {m.node_id}</span>
+                      {isEditing ? (
+                        <>
+                          <input
+                            style={{ width: '5rem' }}
+                            autoFocus
+                            type="number"
+                            min={0}
+                            step={0.1}
+                            value={editingMassValue}
+                            onChange={e => setEditingMassValue(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                commitMassEdit(m.id);
+                              } else if (e.key === 'Escape') {
+                                cancelMassEdit();
+                              }
+                            }}
+                            onBlur={() => commitMassEdit(m.id)}
+                          /> {displayUnit}
+                          <button type="button" onClick={() => commitMassEdit(m.id)} style={{ padding: '2px 6px' }}>Save</button>
+                          <button type="button" onClick={cancelMassEdit} style={{ padding: '2px 6px' }}>Cancel</button>
+                        </>
+                      ) : (
+                        <>
+                          <span>{m.value} {displayUnit}</span>
+                          <span style={{ fontSize: '0.7rem', color: '#555' }}>({physicalKg.toFixed(2)} kg)</span>
+                          <button type="button" onClick={() => startMassEdit(m)} style={{ padding: '2px 6px' }}>Edit</button>
+                        </>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+        <details style={{ marginTop: '1rem' }}>
+          <summary>Structure Data</summary>
+          <pre style={{ maxHeight: 200, overflow: 'auto', background: '#f7f7f7', padding: '0.5rem' }}>{JSON.stringify({ unitSystem, nodes, beams, fixtures: Array.from(fixtures), masses, result }, null, 2)}</pre>
+        </details>
+      </div>
+    </div>
+  );
+};
+
+export default App;
+
+// Helper functions appended below component for clarity
+function isFinitePositive(n: number) {
+  return Number.isFinite(n) && n >= 0;
+}
