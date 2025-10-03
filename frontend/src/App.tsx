@@ -50,6 +50,7 @@ export const App: React.FC = () => {
   };
 
   const cancelMassEdit = () => {
+    setEditingMassId(null);
     setEditingMassValue('');
   };
 

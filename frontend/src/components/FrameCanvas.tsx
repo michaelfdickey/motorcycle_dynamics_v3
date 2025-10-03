@@ -261,18 +261,39 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
           <g key={n.id} onClick={e => { e.stopPropagation(); onNodeClick(n.id); }} cursor="pointer">
             <circle cx={n.x * SCALE} cy={n.y * SCALE} r={radius} fill={selected ? '#ffb703' : fixed ? '#1d3557' : '#457b9d'} stroke={fixed ? '#000' : '#333'} strokeWidth={selected ? 3 : 1} />
             {supportType === 'pin' && (() => {
+              // Enhanced rigid (pin) support symbol: larger triangle + ground line with hatched (angled comb) lines.
               const cx = n.x * SCALE;
               const cy = n.y * SCALE;
-              const baseWidth = radius * 4;
+              const scaleFactor = 1.25; // slightly larger than previous
+              const baseWidth = radius * 4 * scaleFactor;
               const halfBase = baseWidth / 2;
-              const height = radius * 3;
+              const height = radius * 3 * scaleFactor;
               const baseY = cy + height;
-              const points = [
+              const groundGap = radius * 0.6 * scaleFactor;
+              const groundY = baseY + groundGap;
+              const triPoints = [
                 `${cx},${cy}`,
                 `${cx - halfBase},${baseY}`,
                 `${cx + halfBase},${baseY}`
               ].join(' ');
-              return <polygon points={points} fill="#1d3557" stroke="#000" strokeWidth={1} />;
+              // Hatch lines: angled at ~45°, confined between ground line and a little below it.
+              const hatchSpacing = radius * 0.9 * scaleFactor;
+              const hatchLen = radius * 1.4 * scaleFactor;
+              const hatchLines: JSX.Element[] = [];
+              for (let x = cx - halfBase + hatchSpacing * 0.2; x <= cx + halfBase - hatchSpacing * 0.2; x += hatchSpacing) {
+                const x1 = x - hatchLen * 0.4;
+                const y1 = groundY;
+                const x2 = x + hatchLen * 0.4;
+                const y2 = groundY + hatchLen * 0.6; // downward-right
+                hatchLines.push(<line key={`h${x}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#222" strokeWidth={1} />);
+              }
+              return (
+                <g>
+                  <polygon points={triPoints} fill="#1d3557" stroke="#000" strokeWidth={1.2} />
+                  <line x1={cx - halfBase * 0.9} y1={groundY} x2={cx + halfBase * 0.9} y2={groundY} stroke="#000" strokeWidth={2} />
+                  {hatchLines}
+                </g>
+              );
             })()}
             {supportType === 'roller' && (() => {
               const cx = n.x * SCALE;
