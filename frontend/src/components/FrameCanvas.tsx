@@ -13,12 +13,13 @@ interface Props {
   unitSystem?: UnitSystem;
   onAddNode: (x: number, y: number) => void;
   onNodeClick: (id: string) => void; // context dependent on mode
+  onDeleteBeam?: (id: string) => void; // only used in delete mode
 }
 
 const SCALE = 1; // pixels per model unit
 const DISP_SCALE = 200; // exaggeration factor for displacement visualization
 
-export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendingBeamStart, supports, masses, unitSystem = 'KMS', onAddNode, onNodeClick }) => {
+export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendingBeamStart, supports, masses, unitSystem = 'KMS', onAddNode, onNodeClick, onDeleteBeam }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   const handleClick = (e: React.MouseEvent) => {
@@ -42,7 +43,8 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         const n1 = nodes.find(n => n.id === b.node_start);
         const n2 = nodes.find(n => n.id === b.node_end);
         if (!n1 || !n2) return null;
-        return <line key={b.id} x1={n1.x * SCALE} y1={n1.y * SCALE} x2={n2.x * SCALE} y2={n2.y * SCALE} stroke="#444" strokeWidth={2} />;
+        const deletable = mode === 'delete';
+        return <line key={b.id} x1={n1.x * SCALE} y1={n1.y * SCALE} x2={n2.x * SCALE} y2={n2.y * SCALE} stroke={deletable ? '#aa0000' : '#444'} strokeWidth={2} style={deletable ? { cursor: 'pointer' } : undefined} onClick={e => { if (deletable && onDeleteBeam) { e.stopPropagation(); onDeleteBeam(b.id); } }} />;
       })}
       {/* Deformed shape */}
       {result && beams.map(b => {

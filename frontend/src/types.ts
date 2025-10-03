@@ -43,7 +43,7 @@ export interface NodeMass {
   value: number;     // kg
 }
 
-export type ToolMode = 'node' | 'beam' | 'fixture' | 'mass';
+export type ToolMode = 'node' | 'beam' | 'fixture' | 'mass' | 'delete';
 
 export type UnitSystem = 'KMS' | 'IPS'; // Kilogram-Meter-Second (SI) or Inch-Pound-Second
 

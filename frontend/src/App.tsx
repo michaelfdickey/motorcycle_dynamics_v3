@@ -51,7 +51,37 @@ export const App: React.FC = () => {
     const id = `N${nodeCounter++}`;
     setNodes(prev => [...prev, { id, x: parseFloat(x.toFixed(2)), y: parseFloat(y.toFixed(2)) }]);
   };
+  const deleteBeam = (beamId: string) => {
+    setBeams(prev => prev.filter(b => b.id !== beamId));
+    setResult(null);
+    setStatus(`Beam ${beamId} deleted.`);
+  };
+
+  const removeSupport = (nodeId: string) => {
+    setSupports(curr => {
+      if (!curr.has(nodeId)) return curr;
+      const next = new Map(curr);
+      next.delete(nodeId);
+      setNodes(ns => ns.map(n => n.id === nodeId ? { ...n, constraints: undefined } : n));
+      return next;
+    });
+    setStatus(`Support removed from ${nodeId}.`);
+  };
+
   const handleNodeClick = (id: string) => {
+    if (mode === 'delete') {
+      // Delete node and associated entities
+      const beamsToRemove = beams.filter(b => b.node_start === id || b.node_end === id).map(b => b.id);
+      const massesToRemove = masses.filter(m => m.node_id === id).map(m => m.id);
+      const hadSupport = supports.has(id);
+      setBeams(prev => prev.filter(b => !beamsToRemove.includes(b.id)));
+      setMasses(prev => prev.filter(m => m.node_id !== id));
+      setSupports(prev => { if (!hadSupport) return prev; const next = new Map(prev); next.delete(id); return next; });
+      setNodes(prev => prev.filter(n => n.id !== id));
+      setResult(null);
+      setStatus(`Deleted node ${id}${beamsToRemove.length ? ` + ${beamsToRemove.length} beam(s)` : ''}${massesToRemove.length ? ` + ${massesToRemove.length} mass(es)` : ''}${hadSupport ? ' + support' : ''}.`);
+      return;
+    }
     if (mode === 'beam') {
       if (pendingBeamStart == null) {
         setPendingBeamStart(id);
@@ -216,7 +246,7 @@ export const App: React.FC = () => {
         <div style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <fieldset style={{ border: '1px solid #ccc', padding: '0.5rem' }}>
             <legend>Tool</legend>
-            {(['node','beam','fixture','mass'] as ToolMode[]).map(m => (
+            {(['node','beam','fixture','mass','delete'] as ToolMode[]).map(m => (
               <label key={m} style={{ marginRight: '0.5rem' }}>
                 <input type="radio" name="mode" value={m} checked={mode === m} onChange={() => { setMode(m); setPendingBeamStart(null); }} /> {m}
               </label>
@@ -248,7 +278,7 @@ export const App: React.FC = () => {
           <button onClick={clearAll}>Clear</button>
         </div>
         <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem' }}>
-          Mode tips: node=click empty to add | beam=click start then end node | fixture=toggle support | mass=add lumped mass. Units: KMS=SI, IPS=inch/lbf. Analysis: truss=axial-only pins (rotations ignored), frame=beam bending.
+          Mode tips: node=click empty to add | beam=click start then end node | fixture=cycle support | mass=add lumped mass | delete=click beam or node (removes attached beams/masses/support). Units: KMS=SI, IPS=inch/lbf.
         </div>
         <div style={{ fontSize: '0.9rem', color: '#555' }}>{status}</div>
         {determinacyMsg && (
@@ -264,21 +294,22 @@ export const App: React.FC = () => {
         <FrameCanvas
           nodes={nodes}
           beams={beams}
-            result={result}
-            mode={mode}
-            pendingBeamStart={pendingBeamStart}
-            supports={supports}
-            masses={new Map(masses.map(m => [m.node_id, (masses.filter(mm => mm.node_id === m.node_id).reduce((a,c)=>a+c.value,0))]))}
-            unitSystem={unitSystem}
-            onAddNode={addNode}
-            onNodeClick={handleNodeClick}
+          result={result}
+          mode={mode}
+          pendingBeamStart={pendingBeamStart}
+          supports={supports}
+          masses={new Map(masses.map(m => [m.node_id, (masses.filter(mm => mm.node_id === m.node_id).reduce((a,c)=>a+c.value,0))]))}
+          unitSystem={unitSystem}
+          onAddNode={addNode}
+          onNodeClick={handleNodeClick}
+          onDeleteBeam={deleteBeam}
         />
         <div style={{ display: 'flex', gap: '2rem', marginTop: '1rem', flexWrap: 'wrap' }}>
           <div>
             <h4 style={{ margin: '0 0 0.25rem' }}>Supports</h4>
             {supports.size === 0 ? <div style={{ fontSize: '0.8rem' }}>None</div> : (
               <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
-                {Array.from(supports.entries()).map(([nid, t]) => <li key={nid}>{nid}: {t}</li>)}
+                {Array.from(supports.entries()).map(([nid, t]) => <li key={nid}>{nid}: {t} <button style={{ marginLeft: 4, fontSize: '0.65rem' }} onClick={() => removeSupport(nid)}>x</button></li>)}
               </ul>
             )}
             <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '0.25rem' }}>Click cycles: none → pin (fix x,y) → roller (fix y). In truss mode need m + r = 2j.</div>
