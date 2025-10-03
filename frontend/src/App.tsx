@@ -40,6 +40,9 @@ export const App: React.FC = () => {
   ];
   const getGridOptions = () => unitSystem === 'IPS' ? gridOptionsIPS : gridOptionsKMS;
   const [gridSpacing, setGridSpacing] = useState<number>(getGridOptions()[2].value); // default mid option
+  const [zoomScale, setZoomScale] = useState<number>(1); // continuous zoom multiplier
+  const [panX, setPanX] = useState<number>(0); // model units offset
+  const [panY, setPanY] = useState<number>(0);
 
   const startMassEdit = (m: NodeMass) => {
     setEditingMassId(m.id);
@@ -47,21 +50,18 @@ export const App: React.FC = () => {
   };
 
   const cancelMassEdit = () => {
-    setEditingMassId(null);
     setEditingMassValue('');
   };
 
   const commitMassEdit = (id: string) => {
-    if (editingMassId !== id) return; // stale
+    if (editingMassId !== id) return;
     const parsed = parseFloat(editingMassValue);
-    if (!isFinite(parsed) || parsed < 0) {
-      setStatus('Mass value must be a non-negative number.');
-      return;
-    }
+    if (!isFinite(parsed) || parsed < 0) { setStatus('Mass value must be a non-negative number.'); return; }
     setMasses(prev => prev.map(m => m.id === id ? { ...m, value: parseFloat(parsed.toFixed(3)) } : m));
     setStatus(`Mass ${id} set to ${parsed} ${unitSystem === 'IPS' ? 'lbm' : 'kg'}`);
     cancelMassEdit();
   };
+
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [status, setStatus] = useState<string>('');
 
@@ -69,6 +69,7 @@ export const App: React.FC = () => {
     const id = `N${nodeCounter++}`;
     setNodes(prev => [...prev, { id, x: parseFloat(x.toFixed(2)), y: parseFloat(y.toFixed(2)) }]);
   };
+
   const deleteBeam = (beamId: string) => {
     setBeams(prev => prev.filter(b => b.id !== beamId));
     setResult(null);
@@ -88,7 +89,6 @@ export const App: React.FC = () => {
 
   const handleNodeClick = (id: string) => {
     if (mode === 'delete') {
-      // Delete node and associated entities
       const beamsToRemove = beams.filter(b => b.node_start === id || b.node_end === id).map(b => b.id);
       const massesToRemove = masses.filter(m => m.node_id === id).map(m => m.id);
       const hadSupport = supports.has(id);
@@ -109,16 +109,14 @@ export const App: React.FC = () => {
         setStatus('Cancelled beam selection.');
       } else {
         const beamId = `B${beamCounter++}`;
-        // Provide defaults that depend on unit system
         const defaultE = getDefaultE(unitSystem);
-        const defaultA = unitSystem === 'KMS' ? 1e-3 : 0.002; // rough difference
-        const defaultI = unitSystem === 'KMS' ? 1e-6 : 0.004; // placeholder in^4
-        setBeams(prev => [...prev, { id: beamId, node_start: pendingBeamStart, node_end: id, E: defaultE, I: defaultI, A: defaultA }]);
+        const defaultA = unitSystem === 'KMS' ? 1e-3 : 0.002;
+        const defaultI = unitSystem === 'KMS' ? 1e-6 : 0.004;
+        setBeams(prev => [...prev, { id: beamId, node_start: pendingBeamStart!, node_end: id, E: defaultE, I: defaultI, A: defaultA }]);
         setPendingBeamStart(null);
         setStatus(`Beam ${beamId} added.`);
       }
     } else if (mode === 'fixture') {
-      // cycle: none -> pin -> roller -> none
       setSupports(curr => {
         const next = new Map(curr);
         const currentType = next.get(id);
@@ -127,25 +125,22 @@ export const App: React.FC = () => {
         else if (currentType === 'pin') newType = 'roller';
         else newType = undefined;
         if (newType) next.set(id, newType); else next.delete(id);
-        // apply constraints to nodes (pin: fix_x, fix_y; roller: fix_y only)
         setNodes(nodes => nodes.map(n => {
           if (n.id !== id) return n;
-            if (!newType) return { ...n, constraints: undefined };
-            if (newType === 'pin') return { ...n, constraints: { fix_x: true, fix_y: true, fix_rotation: true } };
-            return { ...n, constraints: { fix_x: false, fix_y: true, fix_rotation: true } };
+          if (!newType) return { ...n, constraints: undefined };
+          if (newType === 'pin') return { ...n, constraints: { fix_x: true, fix_y: true, fix_rotation: true } };
+          return { ...n, constraints: { fix_x: false, fix_y: true, fix_rotation: true } };
         }));
         setStatus(newType ? `${id} set to ${newType}` : `${id} support removed`);
         return next;
       });
     } else if (mode === 'mass') {
       const massId = `M${massCounter++}`;
-        const defaultMass = unitSystem === 'KMS' ? 10 : (10 / UNIT_FACTORS.IPS.mass); // ~10 kg expressed in current units
-  const newMass: NodeMass = { id: massId, node_id: id, value: parseFloat(defaultMass.toFixed(2)) };
+      const defaultMass = unitSystem === 'KMS' ? 10 : (10 / UNIT_FACTORS.IPS.mass);
+      const newMass: NodeMass = { id: massId, node_id: id, value: parseFloat(defaultMass.toFixed(2)) };
       setMasses(prev => [...prev, newMass]);
       const massStatus = unitSystem === 'IPS' ? `${newMass.value} lbm` : `${newMass.value} kg`;
       setStatus(`Mass ${massId} (${massStatus} ~10kg physical) attached to ${id}`);
-    } else if (mode === 'node') {
-      // In node mode clicking existing node does nothing yet
     }
   };
 
@@ -322,6 +317,7 @@ export const App: React.FC = () => {
               </select>
             )}
           </fieldset>
+          <div style={{ position:'relative' }} />
           <fieldset style={{ border: '1px solid #ccc', padding: '0.5rem' }}>
             <legend>Snap</legend>
             {(['major','minor','fine','free'] as SnapMode[]).map(s => (
@@ -360,23 +356,74 @@ export const App: React.FC = () => {
             )}
           </div>
         </div>
-        <FrameCanvas
-          nodes={nodes}
-          beams={beams}
-          result={result}
-          mode={mode}
-          pendingBeamStart={pendingBeamStart}
-          supports={supports}
-          masses={new Map(masses.map(m => [m.node_id, (masses.filter(mm => mm.node_id === m.node_id).reduce((a,c)=>a+c.value,0))]))}
-          unitSystem={unitSystem}
-          onAddNode={addNode}
-          onNodeClick={handleNodeClick}
-          onDeleteBeam={deleteBeam}
-          showGrid={showGrid}
-          gridSpacing={gridSpacing}
-          snapMode={snapMode}
-          setStatus={setStatus}
-        />
+        <div style={{ position:'relative', display:'inline-block' }}>
+          <FrameCanvas
+            nodes={nodes}
+            beams={beams}
+            result={result}
+            mode={mode}
+            pendingBeamStart={pendingBeamStart}
+            supports={supports}
+            masses={new Map(masses.map(m => [m.node_id, (masses.filter(mm => mm.node_id === m.node_id).reduce((a,c)=>a+c.value,0))]))}
+            unitSystem={unitSystem}
+            onAddNode={addNode}
+            onNodeClick={handleNodeClick}
+            onDeleteBeam={deleteBeam}
+            showGrid={showGrid}
+            gridSpacing={gridSpacing}
+            snapMode={snapMode}
+            setStatus={setStatus}
+            zoomScale={zoomScale}
+            panX={panX}
+            panY={panY}
+          />
+          {/* Overlay controls (zoom + pan) */}
+          <div style={{ pointerEvents:'none' }}>
+            <div style={{ position:'absolute', bottom:12, right:12, display:'flex', flexDirection:'column', gap:6, pointerEvents:'auto' }}>
+              <button aria-label="Zoom In" style={{ width:34, height:34, fontSize:18 }} onClick={() => {
+                setZoomScale(z => {
+                  let nz = z * 1.2;
+                  if (unitSystem === 'IPS') {
+                    const levels = gridOptionsIPS.map(o=>o.value);
+                    const idx = levels.indexOf(gridSpacing);
+                    if (idx > 0) {
+                      const finer = levels[idx-1];
+                      if (nz >= 2.0) { setGridSpacing(finer); nz = 1; }
+                    }
+                  }
+                  return Math.min(nz, 20);
+                });
+              }}>+</button>
+              <button aria-label="Zoom Out" style={{ width:34, height:34, fontSize:18 }} onClick={() => {
+                setZoomScale(z => {
+                  let nz = z / 1.2;
+                  if (unitSystem === 'IPS') {
+                    const levels = gridOptionsIPS.map(o=>o.value);
+                    const idx = levels.indexOf(gridSpacing);
+                    if (idx < levels.length -1) {
+                      const coarser = levels[idx+1];
+                      if (nz <= 0.5) { setGridSpacing(coarser); nz = 1; }
+                    }
+                  }
+                  return Math.max(nz, 0.05);
+                });
+              }}>-</button>
+            </div>
+            {/* Pan buttons */}
+            {(() => {
+              const stepBase = (unitSystem === 'IPS' ? gridSpacing : gridSpacing * 5) / 2; // half a major spacing
+              const step = stepBase / zoomScale; // keep roughly constant on screen
+              return (
+                <>
+                  <button aria-label="Pan Up" style={{ position:'absolute', top:8, left:'50%', transform:'translateX(-50%)', width:36, height:30, pointerEvents:'auto' }} onClick={() => setPanY(p => p - step)}>▲</button>
+                  <button aria-label="Pan Down" style={{ position:'absolute', bottom:8, left:'50%', transform:'translateX(-50%)', width:36, height:30, pointerEvents:'auto' }} onClick={() => setPanY(p => p + step)}>▼</button>
+                  <button aria-label="Pan Left" style={{ position:'absolute', left:8, top:'50%', transform:'translateY(-50%)', width:30, height:36, pointerEvents:'auto' }} onClick={() => setPanX(p => p - step)}>◀</button>
+                  <button aria-label="Pan Right" style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', width:30, height:36, pointerEvents:'auto' }} onClick={() => setPanX(p => p + step)}>▶</button>
+                </>
+              );
+            })()}
+          </div>
+        </div>
         <div style={{ display: 'flex', gap: '2rem', marginTop: '1rem', flexWrap: 'wrap' }}>
           <div>
             <h4 style={{ margin: '0 0 0.25rem' }}>Supports</h4>

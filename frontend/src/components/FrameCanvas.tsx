@@ -18,18 +18,21 @@ interface Props {
   gridSpacing?: number; // spacing in current display units
   snapMode?: SnapMode;
   setStatus?: (s: string) => void;
+  zoomScale?: number;
+  panX?: number;
+  panY?: number;
 }
 
 const DISP_SCALE = 200; // exaggeration factor for displacement visualization
 
-export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendingBeamStart, supports, masses, unitSystem = 'KMS', onAddNode, onNodeClick, onDeleteBeam, showGrid = false, gridSpacing = 50, snapMode = 'free', setStatus }) => {
+export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendingBeamStart, supports, masses, unitSystem = 'KMS', onAddNode, onNodeClick, onDeleteBeam, showGrid = false, gridSpacing = 50, snapMode = 'free', setStatus, zoomScale = 1, panX = 0, panY = 0 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [hoverPoint, setHoverPoint] = React.useState<{x:number,y:number}|null>(null);
 
   // Dynamic scale so that one major grid spacing maps to a target pixel length.
-  const TARGET_MAJOR_PX = 250; // desired pixel width of one major spacing
+  const TARGET_MAJOR_PX = 250; // desired pixel width of one major spacing (baseline)
   const majorSpacingUnits = unitSystem === 'IPS' ? gridSpacing : gridSpacing * 5;
-  const SCALE = majorSpacingUnits > 0 ? TARGET_MAJOR_PX / majorSpacingUnits : 1;
+  const SCALE = majorSpacingUnits > 0 ? (TARGET_MAJOR_PX * zoomScale) / majorSpacingUnits : 1;
 
   const computeMinorSpacing = (): number => {
     if (!gridSpacing) return 1;
@@ -60,8 +63,8 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
 
   const snapCoords = (clientX:number, clientY:number, altKey:boolean) => {
     const rect = svgRef.current!.getBoundingClientRect();
-  let x = (clientX - rect.left) / SCALE;
-  let y = (clientY - rect.top) / SCALE;
+  let x = (clientX - rect.left) / SCALE + panX;
+  let y = (clientY - rect.top) / SCALE + panY;
     const step = altKey ? 0 : getSnapStep();
     if (step > 0) {
       x = Math.round(x / step) * step;
@@ -103,6 +106,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
+      <g transform={`translate(${-panX * SCALE}, ${-panY * SCALE})`}>
       {showGrid && gridSpacing > 0 && (
         <g pointerEvents="none">
           {(() => {
@@ -152,7 +156,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         </g>
       )}
       {/* Undeformed beams */}
-      {beams.map(b => {
+  {beams.map(b => {
         const n1 = nodes.find(n => n.id === b.node_start);
         const n2 = nodes.find(n => n.id === b.node_end);
         if (!n1 || !n2) return null;
@@ -169,7 +173,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
   return <line key={b.id + '-def'} x1={(n1.x + d1.ux * DISP_SCALE) * SCALE} y1={(n1.y + d1.uy * DISP_SCALE) * SCALE} x2={(n2.x + d2.ux * DISP_SCALE) * SCALE} y2={(n2.y + d2.uy * DISP_SCALE) * SCALE} stroke="#e63946" strokeWidth={2} strokeDasharray="4 4" />;
       })}
       {/* Axial force labels (always display in lbs for user clarity) */}
-      {result && result.internal_forces.map(f => {
+  {result && result.internal_forces.map(f => {
         const beam = beams.find(b => b.id === f.id);
         if (!beam) return null;
         const n1 = nodes.find(n => n.id === beam.node_start);
@@ -187,7 +191,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
           </g>
         );
       })}
-      {nodes.map(n => {
+  {nodes.map(n => {
   const supportType = supports.get(n.id);
   const fixed = !!supportType; // for coloring
         const massValue = masses.get(n.id); // numeric in current unit system
@@ -337,6 +341,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
           })()}
         </g>
       )}
+      </g>
     </svg>
   );
 };
