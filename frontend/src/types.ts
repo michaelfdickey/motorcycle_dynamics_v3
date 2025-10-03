@@ -45,6 +45,8 @@ export interface NodeMass {
 
 export type ToolMode = 'node' | 'beam' | 'fixture' | 'mass' | 'delete';
 
+export type SnapMode = 'major' | 'minor' | 'fine' | 'free';
+
 export type UnitSystem = 'KMS' | 'IPS'; // Kilogram-Meter-Second (SI) or Inch-Pound-Second
 
 export interface UnitFactors {

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FrameCanvas } from './components/FrameCanvas';
-import { BeamInput, NodeInput, SimulationInput, SimulationResult, ToolMode, NodeMass, UnitSystem, SupportType } from './types';
+import { BeamInput, NodeInput, SimulationInput, SimulationResult, ToolMode, NodeMass, UnitSystem, SupportType, SnapMode } from './types';
 import { UNIT_FACTORS, convertNodePositions, convertBeamProperties, getDefaultE, convertModulusToSI, convertSectionToSI, convertMasses } from './units';
 import { simulate } from './api';
 
@@ -22,6 +22,24 @@ export const App: React.FC = () => {
   const [analysisType, setAnalysisType] = useState<'frame' | 'truss'>('truss');
   const [determinacyMsg, setDeterminacyMsg] = useState<string>('');
   const [solvabilityMsg, setSolvabilityMsg] = useState<string>('');
+  const [showGrid, setShowGrid] = useState<boolean>(true);
+  const [snapMode, setSnapMode] = useState<SnapMode>('minor');
+  const gridOptionsIPS = [
+    { label: '1"', value: 1 },
+    { label: '1′ (12")', value: 12 },
+    { label: '3′', value: 36 },
+    { label: '10′', value: 120 },
+    { label: '50′', value: 600 }
+  ];
+  const gridOptionsKMS = [
+    { label: '1 cm', value: 0.01 },
+    { label: '50 cm', value: 0.5 },
+    { label: '1 m', value: 1 },
+    { label: '5 m', value: 5 },
+    { label: '10 m', value: 10 }
+  ];
+  const getGridOptions = () => unitSystem === 'IPS' ? gridOptionsIPS : gridOptionsKMS;
+  const [gridSpacing, setGridSpacing] = useState<number>(getGridOptions()[2].value); // default mid option
 
   const startMassEdit = (m: NodeMass) => {
     setEditingMassId(m.id);
@@ -261,6 +279,11 @@ export const App: React.FC = () => {
                   setBeams(curr => convertBeamProperties(curr, unitSystem, u));
                   setMasses(curr => convertMasses(curr, unitSystem, u));
                   setUnitSystem(u);
+                  // adjust grid spacing if current invalid for new unit set
+                  const opts = u === 'IPS' ? gridOptionsIPS : gridOptionsKMS;
+                  if (!opts.some(o => o.value === gridSpacing)) {
+                    setGridSpacing(opts[2].value); // choose a representative mid option
+                  }
                   setStatus(`Switched units to ${u}`);
                 }} /> {u}
               </label>
@@ -271,6 +294,45 @@ export const App: React.FC = () => {
             {(['truss','frame'] as const).map(a => (
               <label key={a} style={{ marginRight: '0.5rem' }}>
                 <input type="radio" name="analysis" value={a} checked={analysisType === a} onChange={() => { setAnalysisType(a); setStatus(`Analysis mode: ${a}`); }} /> {a}
+              </label>
+            ))}
+          </fieldset>
+          <fieldset style={{ border: '1px solid #ccc', padding: '0.5rem' }}>
+            <legend>Grid</legend>
+            {['on','off'].map(opt => (
+              <label key={opt} style={{ marginRight: '0.5rem' }}>
+                <input
+                  type="radio"
+                  name="grid"
+                  value={opt}
+                  checked={showGrid === (opt === 'on')}
+                  onChange={() => setShowGrid(opt === 'on')}
+                /> {opt}
+              </label>
+            ))}
+            {showGrid && (
+              <select
+                style={{ marginLeft: '0.5rem' }}
+                value={gridSpacing}
+                onChange={e => setGridSpacing(parseFloat(e.target.value))}
+              >
+                {getGridOptions().map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            )}
+          </fieldset>
+          <fieldset style={{ border: '1px solid #ccc', padding: '0.5rem' }}>
+            <legend>Snap</legend>
+            {(['major','minor','fine','free'] as SnapMode[]).map(s => (
+              <label key={s} style={{ marginRight: '0.5rem' }}>
+                <input
+                  type="radio"
+                  name="snap"
+                  value={s}
+                  checked={snapMode === s}
+                  onChange={() => setSnapMode(s)}
+                /> {s}
               </label>
             ))}
           </fieldset>
@@ -303,6 +365,10 @@ export const App: React.FC = () => {
           onAddNode={addNode}
           onNodeClick={handleNodeClick}
           onDeleteBeam={deleteBeam}
+          showGrid={showGrid}
+          gridSpacing={gridSpacing}
+          snapMode={snapMode}
+          setStatus={setStatus}
         />
         <div style={{ display: 'flex', gap: '2rem', marginTop: '1rem', flexWrap: 'wrap' }}>
           <div>
