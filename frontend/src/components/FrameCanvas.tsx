@@ -21,13 +21,29 @@ interface Props {
   zoomScale?: number;
   panX?: number;
   panY?: number;
+  onPanChange?: (px: number, py: number) => void;
+  onZoomAtCursor?: (factor: number, screenX: number, screenY: number, rect: DOMRect, deltaY: number) => void;
 }
 
 const DISP_SCALE = 200; // exaggeration factor for displacement visualization
 
-export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendingBeamStart, supports, masses, unitSystem = 'KMS', onAddNode, onNodeClick, onDeleteBeam, showGrid = false, gridSpacing = 50, snapMode = 'free', setStatus, zoomScale = 1, panX = 0, panY = 0 }) => {
+export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendingBeamStart, supports, masses, unitSystem = 'KMS', onAddNode, onNodeClick, onDeleteBeam, showGrid = false, gridSpacing = 50, snapMode = 'free', setStatus, zoomScale = 1, panX = 0, panY = 0, onPanChange, onZoomAtCursor }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [hoverPoint, setHoverPoint] = React.useState<{x:number,y:number}|null>(null);
+  const [panning, setPanning] = React.useState(false);
+  const panStartRef = React.useRef<{clientX:number; clientY:number; panX:number; panY:number} | null>(null);
+  const spaceDownRef = React.useRef(false);
+
+  // Track spacebar globally for space-drag panning
+  React.useEffect(() => {
+    const keyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space') { if (!spaceDownRef.current) { spaceDownRef.current = true; e.preventDefault(); } }
+    };
+    const keyUp = (e: KeyboardEvent) => { if (e.code === 'Space') { spaceDownRef.current = false; } };
+    window.addEventListener('keydown', keyDown, { passive: false });
+    window.addEventListener('keyup', keyUp);
+    return () => { window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp); };
+  }, []);
 
   // Dynamic scale so that one major grid spacing maps to a target pixel length.
   const TARGET_MAJOR_PX = 250; // desired pixel width of one major spacing (baseline)
@@ -73,7 +89,35 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
     return {x,y, step};
   };
 
+  const beginPan = (e: React.MouseEvent) => {
+    if (!svgRef.current || !(e.button === 1 || (e.button === 0 && spaceDownRef.current))) return false;
+    e.preventDefault();
+    const rect = svgRef.current.getBoundingClientRect();
+    panStartRef.current = { clientX: e.clientX, clientY: e.clientY, panX, panY };
+    setPanning(true);
+    return true;
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (beginPan(e)) return; // don't start node add
+    // Otherwise proceed normally (e.g., node add handled by click)
+  };
+
+  const handleMouseMovePan = (e: React.MouseEvent) => {
+    if (!panning || !panStartRef.current || !onPanChange) return;
+    const { clientX, clientY, panX: startX, panY: startY } = panStartRef.current;
+    const dxScreen = e.clientX - clientX;
+    const dyScreen = e.clientY - clientY;
+    const dxModel = dxScreen / SCALE;
+    const dyModel = dyScreen / SCALE;
+    // Drag direction: moving mouse right should move content with cursor (paper grab)
+    onPanChange(startX - dxModel, startY - dyModel);
+  };
+
+  const endPan = () => { setPanning(false); panStartRef.current = null; };
+
   const handleClick = (e: React.MouseEvent) => {
+    if (panning) return; // suppress click action after pan
     if (mode !== 'node') return; // only add nodes in node mode
     if (!svgRef.current) return;
     const {x,y,step} = snapCoords(e.clientX, e.clientY, e.altKey);
@@ -101,60 +145,70 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
       ref={svgRef}
   width={1600}
   height={1000}
-      style={{ border: '1px solid #888', background: '#fff', maxWidth: '100%', height: 'auto' }}
+      style={{ border: '1px solid #888', background: '#fff', maxWidth: '100%', height: 'auto', cursor: panning ? 'grabbing' : (spaceDownRef.current ? 'grab' : 'default') }}
       onClick={handleClick}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
+      onMouseDown={handleMouseDown}
+      onMouseMove={(e) => { handleMouseMove(e); handleMouseMovePan(e); }}
+      onMouseUp={endPan}
+      onMouseLeave={() => { handleMouseLeave(); endPan(); }}
+      onWheel={(e) => {
+        if (!svgRef.current || !onZoomAtCursor) return;
+        // Prevent page scroll when zooming canvas
+        e.preventDefault();
+        const rect = svgRef.current.getBoundingClientRect();
+        const factor = e.deltaY < 0 ? 1.15 : 1/1.15;
+        onZoomAtCursor(factor, e.clientX - rect.left, e.clientY - rect.top, rect, e.deltaY);
+      }}
     >
-      <g transform={`translate(${-panX * SCALE}, ${-panY * SCALE})`}>
       {showGrid && gridSpacing > 0 && (
         <g pointerEvents="none">
           {(() => {
             const lines: JSX.Element[] = [];
-            const width = 1600; // pixel canvas width
-            const height = 1000; // pixel canvas height
+            const width = 1600; // viewport px width
+            const height = 1000; // viewport px height
             const eps = 1e-6;
-            let minor: number;
-            let major: number;
+            let minor: number; let major: number;
             if (unitSystem === 'IPS') {
-              // Selected gridSpacing is the major spacing in inches; derive minor per spec
               major = gridSpacing;
-              if (Math.abs(gridSpacing - 1) < eps) minor = 0.125;           // 1/8" subdivisions
-              else if (Math.abs(gridSpacing - 12) < eps) minor = 1;         // 1" subdivisions
-              else if (Math.abs(gridSpacing - 36) < eps) minor = 6;         // 6" subdivisions
-              else if (Math.abs(gridSpacing - 120) < eps) minor = 12;       // 1' (12")
-              else if (Math.abs(gridSpacing - 600) < eps) minor = 60;       // 5'
-              else { minor = gridSpacing / 5; }
+              if (Math.abs(gridSpacing - 1) < eps) minor = 0.125;
+              else if (Math.abs(gridSpacing - 12) < eps) minor = 1;
+              else if (Math.abs(gridSpacing - 36) < eps) minor = 6;
+              else if (Math.abs(gridSpacing - 120) < eps) minor = 12;
+              else if (Math.abs(gridSpacing - 600) < eps) minor = 60;
+              else minor = gridSpacing / 5;
             } else {
-              // KMS: keep previous behavior (minor=spacing, major=5x)
               minor = gridSpacing;
               major = gridSpacing * 5;
             }
-            const modelWidth = width / SCALE;
-            const modelHeight = height / SCALE;
-            // Performance safeguard: if extremely fine (e.g. 1/8"), cap lines drawn
-            const estLines = (modelWidth / minor) + (modelHeight / minor);
-            const MAX_LINES = 20000; // soft cap
+            const startX = panX;
+            const endX = panX + width / SCALE;
+            const startY = panY;
+            const endY = panY + height / SCALE;
+            const estLines = ((endX - startX) / minor) + ((endY - startY) / minor);
+            const MAX_LINES = 20000;
             let stride = 1;
-            if (estLines > MAX_LINES) {
-              stride = Math.ceil(estLines / MAX_LINES);
+            if (estLines > MAX_LINES) stride = Math.ceil(estLines / MAX_LINES);
+            const firstX = Math.floor(startX / minor) * minor;
+            const firstY = Math.floor(startY / minor) * minor;
+            let idx = 0;
+            for (let x = firstX; x <= endX + eps; x += minor) {
+              if ((idx++ % stride) !== 0) continue;
+              const isMajor = Math.abs((x / major) - Math.round(x / major)) < 1e-6;
+              const xs = (x - panX) * SCALE;
+              lines.push(<line key={'gx'+x.toFixed(5)} x1={xs} y1={0} x2={xs} y2={height} stroke={isMajor ? '#cfcfcf' : '#f3f3f3'} strokeWidth={isMajor ? 1 : 0.4} />);
             }
-            for (let xModel = 0, idx = 0; xModel <= modelWidth + eps; xModel += minor, idx++) {
-              if (idx % stride !== 0) continue;
-              const isMajor = Math.abs(xModel % major) < eps;
-              const xp = xModel * SCALE;
-              lines.push(<line key={'gx'+xModel} x1={xp} y1={0} x2={xp} y2={height} stroke={isMajor ? '#cfcfcf' : '#f3f3f3'} strokeWidth={isMajor ? 1 : 0.4} />);
-            }
-            for (let yModel = 0, idx = 0; yModel <= modelHeight + eps; yModel += minor, idx++) {
-              if (idx % stride !== 0) continue;
-              const isMajor = Math.abs(yModel % major) < eps;
-              const yp = yModel * SCALE;
-              lines.push(<line key={'gy'+yModel} x1={0} y1={yp} x2={width} y2={yp} stroke={isMajor ? '#cfcfcf' : '#f3f3f3'} strokeWidth={isMajor ? 1 : 0.4} />);
+            idx = 0;
+            for (let y = firstY; y <= endY + eps; y += minor) {
+              if ((idx++ % stride) !== 0) continue;
+              const isMajor = Math.abs((y / major) - Math.round(y / major)) < 1e-6;
+              const ys = (y - panY) * SCALE;
+              lines.push(<line key={'gy'+y.toFixed(5)} x1={0} y1={ys} x2={width} y2={ys} stroke={isMajor ? '#cfcfcf' : '#f3f3f3'} strokeWidth={isMajor ? 1 : 0.4} />);
             }
             return lines;
           })()}
         </g>
       )}
+      <g transform={`translate(${-panX * SCALE}, ${-panY * SCALE})`}>
       {/* Undeformed beams */}
   {beams.map(b => {
         const n1 = nodes.find(n => n.id === b.node_start);
@@ -264,83 +318,82 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
           <text x={hoverPoint.x * SCALE + 10} y={hoverPoint.y * SCALE - 10} fontSize={10} fill="#225" stroke="#fff" strokeWidth={0.8} paintOrder="stroke">{hoverPoint.x.toFixed(2)}, {hoverPoint.y.toFixed(2)}</text>
         </g>
       )}
-      {/* Scale Indicator */}
-      {showGrid && (
-        <g transform={`translate(${(unitSystem === 'IPS' ? gridSpacing : gridSpacing * 5) * SCALE},${1000 - 40})`}>
-          {(() => {
-            // Force display length to exactly one major grid spacing so ends align with major vertical lines.
-            // IPS: major = selected gridSpacing; KMS: major = 5 * gridSpacing (our major definition in grid renderer)
-            const major = unitSystem === 'IPS' ? gridSpacing : gridSpacing * 5;
-            const display = major;
-            const barPx = display * SCALE; // SCALE currently 1
-            // Build subdivisions
-            let sub: number[] = [];
-            if (unitSystem === 'IPS') {
-              // Choose subdivision based on canonical fractions
-              if (display <= 1) {
-                const step = 0.125; // eighth inch
-                for (let v = 0; v <= display + 1e-9; v += step) sub.push(v);
-              } else if (display <= 12) {
-                const step = 1; // 1"
-                for (let v = 0; v <= display + 1e-9; v += step) sub.push(v);
-              } else if (display <= 36) {
-                const step = 6; // 6"
-                for (let v = 0; v <= display + 1e-9; v += step) sub.push(v);
-              } else if (display <= 120) {
-                const step = 12; // 1'
-                for (let v = 0; v <= display + 1e-9; v += step) sub.push(v);
-              } else {
-                const step = 60; // 5'
-                for (let v = 0; v <= display + 1e-9; v += step) sub.push(v);
-              }
-            } else {
-              // KMS: subdivide into 5 parts
-              const parts = 5;
-              for (let i = 0; i <= parts; i++) sub.push(display * i / parts);
-            }
-            const formatIPS = (val: number) => {
-              if (val >= 12) {
-                const feet = Math.floor(val / 12);
-                const inches = val - feet * 12;
-                if (inches < 1e-6) return `${feet}\u2032`; // feet only
-                return `${feet}\u2032 ${inches}\u2033`;
-              }
-              if (val >= 1) return `${val}\u2033`;
-              // fractional inches to nearest 1/8
-              const eighths = Math.round(val / 0.125);
-              if (eighths === 0) return '0"';
-              const whole = Math.floor(eighths / 8);
-              const frac = eighths % 8;
-              const fracStr = frac ? `${frac}/8` : '';
-              return whole ? `${whole} ${fracStr}\u2033` : `${fracStr}\u2033`;
-            };
-            const formatKMS = (val: number) => {
-              if (val >= 1) return `${val} m`;
-              if (val >= 0.01) return `${(val*100).toFixed(0)} cm`;
-              return `${(val*1000).toFixed(0)} mm`;
-            };
-            const label = unitSystem === 'IPS' ? formatIPS(display) : formatKMS(display);
-            // Shift label if it would overflow right edge (keep simple; canvas width fixed)
-            const labelWidth = Math.max(34, label.length * 8);
-            const labelX = 4;
-            return (
-              <g>
-                {/* Bar baseline */}
-                <line x1={0} y1={20} x2={barPx} y2={20} stroke="#111" strokeWidth={2} />
-                {/* Subdivision ticks */}
-                {sub.map(v => {
-                  const x = v * SCALE;
-                  const majorTick = Math.abs(v) < 1e-6 || Math.abs(v - display) < 1e-6;
-                  return <line key={v} x1={x} y1={majorTick ? 8 : 12} x2={x} y2={20} stroke="#111" strokeWidth={majorTick ? 2 : 1} />;
-                })}
-                {/* Label background */}
-                <rect x={labelX} y={0} rx={3} ry={3} height={16} width={labelWidth} fill="#111" />
-                <text x={labelX + 4} y={12} fontSize={12} fill="#fff" fontFamily="monospace">{label}</text>
-              </g>
-            );
-          })()}
-        </g>
-      )}
+      {/* Screen-anchored scale bar aligned to major grid lines */}
+      {showGrid && (() => {
+        const width = 1600; const height = 1000; const desiredLeft = 12; const bottomOffset = 40;
+        const major = unitSystem === 'IPS' ? gridSpacing : gridSpacing * 5;
+        const majorPx = major * SCALE;
+        // Visible world window
+        const worldLeft = panX;
+        const worldRight = panX + width / SCALE;
+        // Find first major line >= worldLeft
+        const firstIdx = Math.ceil(worldLeft / major);
+        const lastIdx = Math.floor((worldRight - major) / major);
+        let startIdx: number | null = null;
+        if (lastIdx >= firstIdx) startIdx = firstIdx; // we have at least one full segment
+        // Fallback: if no full segment fits (very zoomed in), allow partial starting at firstIdx
+        if (startIdx === null) startIdx = Math.ceil(worldLeft / major);
+        const startWorldX = startIdx * major;
+        const startScreenX = (startWorldX - panX) * SCALE;
+        const barPx = majorPx; // one major spacing length
+        // If startScreenX is far from desiredLeft (gap larger than half a major), consider shifting one segment back if it would still be mostly visible
+        if (startScreenX - desiredLeft > majorPx * 0.5) {
+          const prevStartWorldX = (startIdx - 1) * major;
+          const prevScreenX = (prevStartWorldX - panX) * SCALE;
+          if (prevScreenX >= -majorPx * 0.25) {
+            // Accept previous segment to reduce gap
+            startIdx = startIdx - 1;
+          }
+        }
+        const finalStartWorldX = startIdx * major;
+        const finalStartScreenX = (finalStartWorldX - panX) * SCALE;
+        // Build subdivisions for label ticks (same logic as before)
+        let sub: number[] = [];
+        if (unitSystem === 'IPS') {
+          if (major <= 1) { for (let v=0; v<= major + 1e-9; v += 0.125) sub.push(v); }
+          else if (major <= 12) { for (let v=0; v<= major + 1e-9; v += 1) sub.push(v); }
+          else if (major <= 36) { for (let v=0; v<= major + 1e-9; v += 6) sub.push(v); }
+          else if (major <= 120) { for (let v=0; v<= major + 1e-9; v += 12) sub.push(v); }
+          else { for (let v=0; v<= major + 1e-9; v += 60) sub.push(v); }
+        } else {
+          for (let i=0;i<=5;i++) sub.push(major * i / 5);
+        }
+        const formatIPS = (val: number) => {
+          if (val >= 12) {
+            const feet = Math.floor(val / 12);
+            const inches = val - feet * 12;
+            if (inches < 1e-6) return `${feet}\u2032`;
+            return `${feet}\u2032 ${inches}\u2033`;
+          }
+          if (val >= 1) return `${val}\u2033`;
+          const eighths = Math.round(val / 0.125);
+          if (eighths === 0) return '0"';
+          const whole = Math.floor(eighths / 8);
+          const frac = eighths % 8;
+          const fracStr = frac ? `${frac}/8` : '';
+          return whole ? `${whole} ${fracStr}\u2033` : `${fracStr}\u2033`;
+        };
+        const formatKMS = (val: number) => {
+          if (val >= 1) return `${val} m`;
+          if (val >= 0.01) return `${(val*100).toFixed(0)} cm`;
+          return `${(val*1000).toFixed(0)} mm`;
+        };
+        const label = unitSystem === 'IPS' ? formatIPS(major) : formatKMS(major);
+        const labelWidth = Math.max(34, label.length * 8);
+        const labelX = finalStartScreenX + 4;
+        return (
+          <g pointerEvents="none">
+            <line x1={finalStartScreenX} y1={height - bottomOffset} x2={finalStartScreenX + barPx} y2={height - bottomOffset} stroke="#111" strokeWidth={2} />
+            {sub.map(v => {
+              const x = finalStartScreenX + v * SCALE;
+              const majorTick = Math.abs(v) < 1e-6 || Math.abs(v - major) < 1e-6;
+              return <line key={v} x1={x} y1={height - bottomOffset - (majorTick ? 12 : 8)} x2={x} y2={height - bottomOffset} stroke="#111" strokeWidth={majorTick ? 2 : 1} />;
+            })}
+            <rect x={labelX} y={height - bottomOffset + 4} rx={3} ry={3} height={16} width={labelWidth} fill="#111" />
+            <text x={labelX + 4} y={height - bottomOffset + 16} fontSize={12} fill="#fff" fontFamily="monospace">{label}</text>
+          </g>
+        );
+      })()}
       </g>
     </svg>
   );

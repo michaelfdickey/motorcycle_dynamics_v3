@@ -144,6 +144,105 @@ export const App: React.FC = () => {
     }
   };
 
+  // Zoom at cursor maintaining world point and scale continuity across grid level changes
+  const zoomAtCursor = (factor: number, screenX: number, screenY: number) => {
+    const TARGET_MAJOR_PX = 250;
+    const oldMajor = unitSystem === 'IPS' ? gridSpacing : gridSpacing * 5;
+    const oldZoom = zoomScale;
+    const oldScale = oldMajor > 0 ? (TARGET_MAJOR_PX * oldZoom) / oldMajor : 1; // pixels per unit
+    const worldX = screenX / oldScale + panX;
+    const worldY = screenY / oldScale + panY;
+
+    let newGrid = gridSpacing;
+    let newZoom = oldZoom * factor;
+    if (unitSystem === 'IPS') {
+      const levels = gridOptionsIPS.map(o => o.value);
+      const idx = levels.indexOf(gridSpacing);
+      if (newZoom >= 2.0 && idx > 0) {
+        const finer = levels[idx - 1];
+        // maintain visual scale continuity
+        newZoom = newZoom * (finer / gridSpacing);
+        newGrid = finer;
+      } else if (newZoom <= 0.5 && idx < levels.length - 1) {
+        const coarser = levels[idx + 1];
+        newZoom = newZoom * (coarser / gridSpacing);
+        newGrid = coarser;
+      }
+    }
+    // Clamp zoom
+    newZoom = Math.min(20, Math.max(0.05, newZoom));
+
+    if (newGrid !== gridSpacing) setGridSpacing(newGrid);
+    setZoomScale(newZoom);
+
+    const newMajor = unitSystem === 'IPS' ? newGrid : newGrid * 5;
+    const newScale = newMajor > 0 ? (TARGET_MAJOR_PX * newZoom) / newMajor : oldScale;
+    // Adjust pan to keep world point under cursor fixed
+    const newPanX = worldX - screenX / newScale;
+    const newPanY = worldY - screenY / newScale;
+    setPanX(newPanX);
+    setPanY(newPanY);
+  };
+
+  // Autofit nodes into viewport with padding; adjust grid spacing (IPS) to keep zoomScale moderate
+  const autoFit = () => {
+    const CANVAS_W = 1600;
+    const CANVAS_H = 1000;
+    if (!nodes.length) {
+      // Reset view
+      setPanX(0); setPanY(0); setZoomScale(1); return;
+    }
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    nodes.forEach(n => { if (n.x < minX) minX = n.x; if (n.x > maxX) maxX = n.x; if (n.y < minY) minY = n.y; if (n.y > maxY) maxY = n.y; });
+    // Handle degenerate extents
+    if (!isFinite(minX) || !isFinite(minY)) return;
+    const spanX = Math.max( maxX - minX, 0.5 );
+    const spanY = Math.max( maxY - minY, 0.5 );
+    const paddingFactor = 0.15; // 15% padding around
+    const targetWidth = spanX * (1 + paddingFactor * 2);
+    const targetHeight = spanY * (1 + paddingFactor * 2);
+    const scaleForWidth = (0.95 * CANVAS_W) / targetWidth; // 95% of canvas
+    const scaleForHeight = (0.90 * CANVAS_H) / targetHeight; // 90% vertical
+    let desiredScale = Math.min(scaleForWidth, scaleForHeight);
+    // Map desiredScale to (zoomScale, gridSpacing). We'll try to pick a grid spacing so resulting zoomScale is between 0.6 and 1.6
+    const TARGET_MAJOR_PX = 250;
+    const chooseIPS = () => {
+      const levels = gridOptionsIPS.map(o=>o.value);
+      let best = {grid: gridSpacing, zoom: 1, diff: Infinity};
+      levels.forEach(g => {
+        const major = g; // IPS major = gridSpacing
+        const z = desiredScale * major / TARGET_MAJOR_PX;
+        if (z < 0.3 || z > 3.5) return; // discard extreme
+        const diff = Math.abs(z - 1);
+        if (diff < best.diff) best = {grid: g, zoom: z, diff};
+      });
+      return best;
+    };
+    let newGrid = gridSpacing;
+    let newZoom: number;
+    if (unitSystem === 'IPS') {
+      const pick = chooseIPS();
+      newGrid = pick.grid;
+      desiredScale = (TARGET_MAJOR_PX * pick.zoom) / newGrid; // adjust if grid changed
+      newZoom = pick.zoom;
+    } else {
+      const major = gridSpacing * 5; // KMS major definition
+      newZoom = desiredScale * major / TARGET_MAJOR_PX;
+    }
+    newZoom = Math.min(20, Math.max(0.05, newZoom));
+    if (unitSystem === 'IPS' && newGrid !== gridSpacing) setGridSpacing(newGrid);
+    setZoomScale(newZoom);
+    const majorFinal = unitSystem === 'IPS' ? newGrid : newGrid * 5;
+    const scaleFinal = (TARGET_MAJOR_PX * newZoom) / majorFinal;
+    // Center model
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const newPanX = centerX - CANVAS_W / (2 * scaleFinal);
+    const newPanY = centerY - CANVAS_H / (2 * scaleFinal);
+    setPanX(newPanX);
+    setPanY(newPanY);
+  };
+
   const runSimulation = async () => {
     // Truss determinacy pre-check (m + r == 2j) when in truss mode
     if (analysisType === 'truss') {
@@ -376,38 +475,15 @@ export const App: React.FC = () => {
             zoomScale={zoomScale}
             panX={panX}
             panY={panY}
+            onPanChange={(px,py) => { setPanX(px); setPanY(py); }}
+            onZoomAtCursor={(factor, sx, sy) => zoomAtCursor(factor, sx, sy)}
           />
           {/* Overlay controls (zoom + pan) */}
           <div style={{ pointerEvents:'none' }}>
             <div style={{ position:'absolute', bottom:12, right:12, display:'flex', flexDirection:'column', gap:6, pointerEvents:'auto' }}>
-              <button aria-label="Zoom In" style={{ width:34, height:34, fontSize:18 }} onClick={() => {
-                setZoomScale(z => {
-                  let nz = z * 1.2;
-                  if (unitSystem === 'IPS') {
-                    const levels = gridOptionsIPS.map(o=>o.value);
-                    const idx = levels.indexOf(gridSpacing);
-                    if (idx > 0) {
-                      const finer = levels[idx-1];
-                      if (nz >= 2.0) { setGridSpacing(finer); nz = 1; }
-                    }
-                  }
-                  return Math.min(nz, 20);
-                });
-              }}>+</button>
-              <button aria-label="Zoom Out" style={{ width:34, height:34, fontSize:18 }} onClick={() => {
-                setZoomScale(z => {
-                  let nz = z / 1.2;
-                  if (unitSystem === 'IPS') {
-                    const levels = gridOptionsIPS.map(o=>o.value);
-                    const idx = levels.indexOf(gridSpacing);
-                    if (idx < levels.length -1) {
-                      const coarser = levels[idx+1];
-                      if (nz <= 0.5) { setGridSpacing(coarser); nz = 1; }
-                    }
-                  }
-                  return Math.max(nz, 0.05);
-                });
-              }}>-</button>
+              <button aria-label="Autofit" title="Autofit (A)" style={{ width:34, height:34, fontSize:14, fontWeight:600 }} onClick={() => autoFit()}>A</button>
+              <button aria-label="Zoom In" style={{ width:34, height:34, fontSize:18 }} onClick={() => zoomAtCursor(1.2, 800, 500)}>+</button>
+              <button aria-label="Zoom Out" style={{ width:34, height:34, fontSize:18 }} onClick={() => zoomAtCursor(1/1.2, 800, 500)}>-</button>
             </div>
             {/* Pan buttons */}
             {(() => {
