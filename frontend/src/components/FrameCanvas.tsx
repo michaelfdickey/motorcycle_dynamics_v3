@@ -230,7 +230,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
   return (
     <svg
       ref={svgRef}
-  width={1600}
+  width={1920}
   height={1000}
       style={{ border: '1px solid #888', background: '#fff', maxWidth: '100%', height: 'auto', cursor: panning ? 'grabbing' : (spaceDownRef.current ? 'grab' : 'default'), overscrollBehavior: 'contain', touchAction: 'none' }}
       onClick={handleClick}
@@ -243,7 +243,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         <g pointerEvents="none">
           {(() => {
             const lines: JSX.Element[] = [];
-            const width = 1600; // viewport px width
+            const width = 1920; // viewport px width
             const height = 1000; // viewport px height
             const eps = 1e-6;
             let minor: number; let major: number;
@@ -800,7 +800,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
       )}
       {showGrid && (() => {
         // Improved stable scale bar: sticks to bottom-left, aligns to a major line, minimal jumping via hysteresis.
-        const width = 1600; const height = 1000; const desiredLeft = 12; const bottomOffset = 40;
+  const width = 1920; const height = 1000; const desiredLeft = 12; const bottomOffset = 40;
         const major = unitSystem === 'IPS' ? gridSpacing : gridSpacing * 5;
         const majorPx = major * SCALE;
         const worldLeft = panX;

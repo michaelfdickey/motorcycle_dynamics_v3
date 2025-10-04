@@ -206,7 +206,7 @@ export const App: React.FC = () => {
 
   // Autofit nodes into viewport with padding; adjust grid spacing (IPS) to keep zoomScale moderate
   const autoFit = () => {
-    const CANVAS_W = 1600;
+  const CANVAS_W = 1920; // widened 20%
     const CANVAS_H = 1000;
     if (!nodes.length) {
       // Reset view
@@ -634,8 +634,8 @@ export const App: React.FC = () => {
           <div style={{ pointerEvents:'none' }}>
             <div style={{ position:'absolute', bottom:12, right:12, display:'flex', flexDirection:'column', gap:6, pointerEvents:'auto' }}>
               <button aria-label="Autofit" title="Autofit (A)" style={{ width:34, height:34, fontSize:14, fontWeight:600 }} onClick={() => autoFit()}>A</button>
-              <button aria-label="Zoom In" style={{ width:34, height:34, fontSize:18 }} onClick={() => zoomAtCursor(1.2, 800, 500)}>+</button>
-              <button aria-label="Zoom Out" style={{ width:34, height:34, fontSize:18 }} onClick={() => zoomAtCursor(1/1.2, 800, 500)}>-</button>
+              <button aria-label="Zoom In" style={{ width:34, height:34, fontSize:18 }} onClick={() => zoomAtCursor(1.2, 960, 500)}>+</button>
+              <button aria-label="Zoom Out" style={{ width:34, height:34, fontSize:18 }} onClick={() => zoomAtCursor(1/1.2, 960, 500)}>-</button>
             </div>
             {/* Pan buttons */}
             {(() => {
@@ -738,7 +738,7 @@ export const App: React.FC = () => {
         )}
         <div style={{ display: 'flex', gap: '2rem', marginTop: '1rem', flexWrap: 'wrap' }}>
           <div>
-            <h4 style={{ margin: '0 0 0.25rem' }}>Supports</h4>
+            <h4 style={{ margin: '0 0 0.25rem' }}>Supports ({supports.size})</h4>
             {supports.size === 0 ? <div style={{ fontSize: '0.8rem' }}>None</div> : (
               <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
                 {Array.from(supports.entries()).map(([nid, t]) => <li key={nid}>{nid}: {t} <button style={{ marginLeft: 4, fontSize: '0.65rem' }} onClick={() => removeSupport(nid)}>x</button></li>)}
@@ -747,7 +747,7 @@ export const App: React.FC = () => {
             <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '0.25rem' }}>Click cycles: none → pin (fix x,y) → roller (fix y). In truss mode need m + r = 2j.</div>
           </div>
           <div>
-            <h4 style={{ margin: '0 0 0.25rem' }}>Beams</h4>
+            <h4 style={{ margin: '0 0 0.25rem' }}>Beams ({beams.length})</h4>
             {beams.length === 0 ? <div style={{ fontSize: '0.8rem' }}>None</div> : (
               <ul style={{ margin: 0, paddingLeft: '1.2rem', maxHeight: 140, overflow: 'auto' }}>
                 {beams.map(b => {
@@ -782,7 +782,7 @@ export const App: React.FC = () => {
             <div style={{ fontSize: '0.65rem', color:'#666', marginTop:'0.25rem' }}>Delete via this list (del) or beam tool delete mode.</div>
           </div>
           <div>
-            <h4 style={{ margin: '0 0 0.25rem' }}>Masses</h4>
+            <h4 style={{ margin: '0 0 0.25rem' }}>Masses ({masses.length})</h4>
             {masses.length === 0 ? <div style={{ fontSize: '0.8rem' }}>None</div> : (
               <ul style={{ margin: 0, paddingLeft: '1.2rem', maxHeight: 120, overflow: 'auto' }}>
                 {masses.map(m => {
