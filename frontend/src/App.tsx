@@ -55,6 +55,7 @@ export const App: React.FC = () => {
   const [sectionPickerBeam, setSectionPickerBeam] = useState<string | null>(null);
   const [filterShape, setFilterShape] = useState<'all'|'round_tube'|'square_tube'>('all');
   const [filterGrade, setFilterGrade] = useState<string>('');
+  const [applySectionToAll, setApplySectionToAll] = useState<boolean>(false);
 
   // Lazy-load materials on first mount (non-blocking)
   React.useEffect(() => { (async() => { try { const mats = await getMaterials(); setMaterials(mats); } catch { /* silent */ } })(); }, []);
@@ -762,6 +763,9 @@ export const App: React.FC = () => {
                   <label style={{ fontSize:'0.7rem' }}>Grade:
                     <input value={filterGrade} onChange={e=>setFilterGrade(e.target.value)} placeholder="filter (e.g. 4130)" style={{ marginLeft:4 }} />
                   </label>
+                  <label style={{ fontSize:'0.7rem', display:'flex', alignItems:'center', gap:4 }} title="Apply chosen section to every beam in the current design">
+                    <input type="checkbox" checked={applySectionToAll} onChange={e=>setApplySectionToAll(e.target.checked)} /> apply to all
+                  </label>
                 </div>
                 <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.68rem' }}>
                   <thead>
@@ -790,9 +794,15 @@ export const App: React.FC = () => {
                           <td style={{ padding:'4px' }}>{m.grade}</td>
                           <td style={{ padding:'4px' }}>
                             <button style={{ fontSize:'0.6rem' }} onClick={()=>{
-                              setBeams(bs => bs.map(b => b.id === sectionPickerBeam ? { ...b, section: m } : b));
+                              if (applySectionToAll) {
+                                setBeams(bs => bs.map(b => ({ ...b, section: m })));
+                                setStatus(`Section applied to all ${beams.length} beam(s).`);
+                              } else {
+                                setBeams(bs => bs.map(b => b.id === sectionPickerBeam ? { ...b, section: m } : b));
+                                setStatus(`Section set on ${sectionPickerBeam}`);
+                              }
                               setSectionPickerBeam(null);
-                              setStatus(`Section set on ${sectionPickerBeam}`);
+                              setApplySectionToAll(false);
                             }}>Select</button>
                           </td>
                         </tr>
