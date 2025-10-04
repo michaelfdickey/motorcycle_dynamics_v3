@@ -242,17 +242,27 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         const dx = x2 - x1; const dy = y2 - y1; const Lpx = Math.hypot(dx, dy) || 1;
         const ux = dx / Lpx; const uy = dy / Lpx;
         const r = thicknessPx / 2;
-        const isRound = section && section.shape === 'round_tube';
+        // Determine if we should render round tube ends. Some material entries may have outer_diameter_in populated
+        // even if shape string mismatches; treat presence of outer_diameter_in (and absence of outer_width_in) as round fallback.
+        const isRound = !!section && (section.shape === 'round_tube' || (!!section.outer_diameter_in && !section.outer_width_in));
+        if (section && !(section.shape === 'round_tube') && section.outer_diameter_in && !section.outer_width_in) {
+          // Debug once per beam: fallback path triggered.
+          // (This will appear in browser console to confirm cause 1 was shape mismatch.)
+          // eslint-disable-next-line no-console
+          console.debug('Round fallback engaged for beam', b.id, 'shape=', section.shape, 'OD=', section.outer_diameter_in);
+        }
         // For round tubes: emulate outward half-caps by shortening line and drawing full circles under it at node centers.
         if (isRound) {
-          // Simplest accurate depiction of round tube: a single line with round line caps produces a pill shape
-          // whose semicircular ends have diameter equal to strokeWidth (tube OD).
+          // Debug: visually differentiate round branch to verify it executes.
           const color = deletable ? '#aa0000' : '#444';
           return (
             <line key={b.id+'-round'} x1={x1} y1={y1} x2={x2} y2={y2}
               stroke={color}
               strokeWidth={thicknessPx}
               strokeLinecap="round"
+              data-shape={section?.shape}
+              data-beamid={b.id}
+              className="round-beam"
               style={deletable ? { cursor: 'pointer' } : undefined}
               onClick={e => { if (deletable && onDeleteBeam) { e.stopPropagation(); onDeleteBeam(b.id); } }} />
           );
