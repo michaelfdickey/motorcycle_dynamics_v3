@@ -18,6 +18,7 @@ export interface BeamInput {
   E: number;
   I: number;
   A: number;
+  section?: BeamSection; // optional selected physical section
 }
 
 export interface LoadInput {
@@ -77,6 +78,21 @@ export interface BeamInternalForce {
 export interface SimulationResult {
   displacements: NodeResult[];
   internal_forces: BeamInternalForce[];
+}
+
+// Physical catalog section (mirrors backend BeamSection / materials.json structure)
+export interface BeamSection {
+  material: string;
+  grade: string;
+  shape: string; // 'round_tube' | 'square_tube' | future
+  outer_diameter_in?: number;
+  outer_width_in?: number;
+  outer_height_in?: number;
+  wall_thickness_in?: number;
+  area_in2?: number;
+  weight_lb_per_ft?: number;
+  yield_strength_psi?: number;
+  ultimate_strength_psi?: number;
 }
 
 // Persisted design shape for save/load

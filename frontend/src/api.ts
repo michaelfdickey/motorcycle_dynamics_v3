@@ -1,4 +1,4 @@
-import { SimulationInput, SimulationResult, DesignData, DesignListItem } from './types';
+import { SimulationInput, SimulationResult, DesignData, DesignListItem, BeamSection } from './types';
 
 const API_BASE = 'http://localhost:8000';
 
@@ -35,4 +35,13 @@ export async function loadDesign(name: string): Promise<DesignData> {
   const res = await fetch(`${API_BASE}/designs/${encodeURIComponent(name)}`);
   if (!res.ok) throw new Error('Failed to load design');
   return res.json();
+}
+
+export interface MaterialsResponse { materials: BeamSection[] }
+
+export async function getMaterials(): Promise<BeamSection[]> {
+  const res = await fetch(`${API_BASE}/materials`);
+  if (!res.ok) throw new Error('Failed to fetch materials');
+  const data: MaterialsResponse = await res.json();
+  return data.materials;
 }

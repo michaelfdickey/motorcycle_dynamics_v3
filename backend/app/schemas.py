@@ -14,6 +14,22 @@ class NodeInput(BaseModel):
     y: float
     constraints: Optional[NodeConstraint] = None
 
+class BeamSection(BaseModel):
+    """Optional physical section metadata selected from materials.json.
+    Only fields needed now for drawing thickness & future tension checks.
+    All dimensions stored in inches (catalog native units)."""
+    material: str
+    grade: str
+    shape: str
+    outer_diameter_in: float | None = None
+    outer_width_in: float | None = None
+    outer_height_in: float | None = None
+    wall_thickness_in: float | None = None
+    area_in2: float | None = None
+    weight_lb_per_ft: float | None = None
+    yield_strength_psi: float | None = None
+    ultimate_strength_psi: float | None = None
+
 class BeamInput(BaseModel):
     id: str
     node_start: str = Field(..., description="ID of start node")
@@ -21,6 +37,7 @@ class BeamInput(BaseModel):
     E: float = Field(..., description="Young's modulus")
     I: float = Field(..., description="Second moment of area (bending about z)")
     A: float = Field(..., description="Cross-sectional area")
+    section: BeamSection | None = Field(None, description="Optional selected physical section")
 
 class LoadInput(BaseModel):
     node_id: str

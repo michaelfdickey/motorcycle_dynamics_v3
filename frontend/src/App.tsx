@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { FrameCanvas } from './components/FrameCanvas';
-import { BeamInput, NodeInput, SimulationInput, SimulationResult, ToolMode, NodeMass, UnitSystem, SupportType, SnapMode, DesignData, DesignListItem } from './types';
+import { BeamInput, NodeInput, SimulationInput, SimulationResult, ToolMode, NodeMass, UnitSystem, SupportType, SnapMode, DesignData, DesignListItem, BeamSection } from './types';
 import { UNIT_FACTORS, convertNodePositions, convertBeamProperties, getDefaultE, convertModulusToSI, convertSectionToSI, convertMasses } from './units';
-import { simulate, saveDesign, listDesigns, loadDesign } from './api';
+import { simulate, saveDesign, listDesigns, loadDesign, getMaterials } from './api';
 
 let nodeCounter = 1;
 let beamCounter = 1;
@@ -49,6 +49,14 @@ export const App: React.FC = () => {
   const [showLoadDialog, setShowLoadDialog] = useState<boolean>(false);
   const [designs, setDesigns] = useState<DesignListItem[] | null>(null);
   const [loadingDesigns, setLoadingDesigns] = useState<boolean>(false);
+  // Materials catalog / section selection
+  const [materials, setMaterials] = useState<BeamSection[] | null>(null);
+  const [sectionPickerBeam, setSectionPickerBeam] = useState<string | null>(null);
+  const [filterShape, setFilterShape] = useState<'all'|'round_tube'|'square_tube'>('all');
+  const [filterGrade, setFilterGrade] = useState<string>('');
+
+  // Lazy-load materials on first mount (non-blocking)
+  React.useEffect(() => { (async() => { try { const mats = await getMaterials(); setMaterials(mats); } catch { /* silent */ } })(); }, []);
 
   const startMassEdit = (m: NodeMass) => {
     setEditingMassId(m.id);
@@ -642,7 +650,7 @@ export const App: React.FC = () => {
           <div>
             <h4 style={{ margin: '0 0 0.25rem' }}>Beams</h4>
             {beams.length === 0 ? <div style={{ fontSize: '0.8rem' }}>None</div> : (
-              <ul style={{ margin: 0, paddingLeft: '1.2rem', maxHeight: 120, overflow: 'auto' }}>
+              <ul style={{ margin: 0, paddingLeft: '1.2rem', maxHeight: 140, overflow: 'auto' }}>
                 {beams.map(b => {
                   const nStart = nodes.find(n => n.id === b.node_start);
                   const nEnd = nodes.find(n => n.id === b.node_end);
@@ -653,11 +661,19 @@ export const App: React.FC = () => {
                     const unit = unitSystem === 'IPS' ? 'in' : 'm';
                     lengthStr = L.toFixed(2) + ' ' + unit;
                   }
+                  const sec = (b as any).section as BeamSection | undefined;
+                  let secLabel = '';
+                  if (sec) {
+                    if (sec.shape === 'round_tube' && sec.outer_diameter_in) secLabel = `${sec.outer_diameter_in.toFixed(2)}x${sec.wall_thickness_in?.toFixed(3)}`;
+                    else if (sec.shape === 'square_tube' && sec.outer_width_in) secLabel = `${sec.outer_width_in.toFixed(2)}sq x${sec.wall_thickness_in?.toFixed(3)}`;
+                  }
                   return (
                     <li key={b.id} style={{ fontSize: '0.8rem', display:'flex', gap:'0.4rem', alignItems:'center', flexWrap:'wrap' }}>
                       <strong>{b.id}</strong>
                       <span>{b.node_start}→{b.node_end}</span>
                       {lengthStr && <span style={{ color:'#555' }}>({lengthStr})</span>}
+                      {secLabel && <span style={{ color:'#0a558c' }}>{secLabel}</span>}
+                      <button style={{ fontSize:'0.6rem', padding:'2px 4px' }} onClick={() => setSectionPickerBeam(b.id)}>section</button>
                       <button style={{ fontSize:'0.6rem', padding:'2px 4px' }} onClick={() => deleteBeam(b.id)}>del</button>
                     </li>
                   );
@@ -719,6 +735,72 @@ export const App: React.FC = () => {
           <summary>Structure Data</summary>
           <pre style={{ maxHeight: 200, overflow: 'auto', background: '#f7f7f7', padding: '0.5rem' }}>{JSON.stringify({ unitSystem, nodes, beams, supports: Array.from(supports.entries()), masses, result }, null, 2)}</pre>
         </details>
+      {/* Section Picker Modal */}
+      {sectionPickerBeam && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.35)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1100 }} onClick={() => setSectionPickerBeam(null)}>
+          <div style={{ background:'#fff', padding:'1rem', borderRadius:8, minWidth:520, maxHeight:'80vh', overflow:'auto' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'0.5rem' }}>
+              <h3 style={{ margin:0 }}>Select Section for {sectionPickerBeam}</h3>
+              <button onClick={()=>setSectionPickerBeam(null)}>✕</button>
+            </div>
+            {!materials && <div>Loading catalog...</div>}
+            {materials && (
+              <>
+                <div style={{ display:'flex', gap:'0.75rem', flexWrap:'wrap', marginBottom:'0.6rem' }}>
+                  <label style={{ fontSize:'0.7rem' }}>Shape:
+                    <select value={filterShape} onChange={e=>setFilterShape(e.target.value as any)} style={{ marginLeft:4 }}>
+                      <option value="all">All</option>
+                      <option value="round_tube">Round</option>
+                      <option value="square_tube">Square</option>
+                    </select>
+                  </label>
+                  <label style={{ fontSize:'0.7rem' }}>Grade:
+                    <input value={filterGrade} onChange={e=>setFilterGrade(e.target.value)} placeholder="filter (e.g. 4130)" style={{ marginLeft:4 }} />
+                  </label>
+                </div>
+                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.68rem' }}>
+                  <thead>
+                    <tr style={{ background:'#f1f1f1' }}>
+                      <th style={{ textAlign:'left', padding:'4px' }}>Shape</th>
+                      <th style={{ textAlign:'left', padding:'4px' }}>Size (OD/W x t)</th>
+                      <th style={{ textAlign:'left', padding:'4px' }}>Area (in²)</th>
+                      <th style={{ textAlign:'left', padding:'4px' }}>Grade</th>
+                      <th style={{ padding:'4px' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {materials.filter(m => {
+                      if (filterShape !== 'all' && m.shape !== filterShape) return false;
+                      if (filterGrade && !m.grade.toLowerCase().includes(filterGrade.toLowerCase())) return false;
+                      return true;
+                    }).map(m => {
+                      let size='';
+                      if (m.shape==='round_tube' && m.outer_diameter_in) size = `${m.outer_diameter_in.toFixed(3)} x ${m.wall_thickness_in?.toFixed(3)}`;
+                      else if (m.shape==='square_tube' && m.outer_width_in) size = `${m.outer_width_in.toFixed(2)} x ${m.wall_thickness_in?.toFixed(3)}`;
+                      return (
+                        <tr key={`${m.shape}-${m.grade}-${size}`} style={{ borderBottom:'1px solid #e2e2e2' }}>
+                          <td style={{ padding:'4px' }}>{m.shape==='round_tube'? 'Round':'Square'}</td>
+                          <td style={{ padding:'4px' }}>{size}</td>
+                          <td style={{ padding:'4px' }}>{m.area_in2?.toFixed(3)}</td>
+                          <td style={{ padding:'4px' }}>{m.grade}</td>
+                          <td style={{ padding:'4px' }}>
+                            <button style={{ fontSize:'0.6rem' }} onClick={()=>{
+                              setBeams(bs => bs.map(b => b.id === sectionPickerBeam ? { ...b, section: m } : b));
+                              setSectionPickerBeam(null);
+                              setStatus(`Section set on ${sectionPickerBeam}`);
+                            }}>Select</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <div style={{ marginTop:'0.5rem', fontSize:'0.6rem', color:'#555' }}>Section dims in inches; drawing thickness scaled. Structural solver still uses numeric A/I (update later to sync automatically).</div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );

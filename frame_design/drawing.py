@@ -84,37 +84,75 @@ def draw_nodes(model):
         dpg.draw_circle((x, y), 5, color=color, fill=color, parent="canvas")
         dpg.draw_text((x + 10, y), f"N{i}", color=(255, 255, 255, 255), parent="canvas")
 
-def draw_beams(model, mouse_pos=None):
-    """Draw all beams on the canvas."""
-    # Draw existing beams
+def _draw_half_circle(center, radius, facing_angle_rad, color, parent):
+    """Draw a filled half-circle centered at node, facing along beam (facing_angle_rad)."""
+    # Half circle spans +/- 90 degrees around facing direction (opposite for making a 'cap').
+    start_angle = facing_angle_rad - math.pi/2
+    end_angle = facing_angle_rad + math.pi/2
+    segments = 16
+    pts = []
+    for i in range(segments + 1):
+        t = start_angle + (end_angle - start_angle) * (i / segments)
+        pts.append((center[0] + radius * math.cos(t), center[1] + radius * math.sin(t)))
+    # Close with center to make a filled fan
+    pts.append(center)
+    dpg.draw_polygon(pts, color=color, fill=(color[0], color[1], color[2], 60), parent=parent)
+
+def draw_beams(model, mouse_pos=None, scale_factor=1.0):
+    """Draw all beams with thickness based on assigned section (if any)."""
+    pixel_per_unit = GRID_SPACING / max(scale_factor, 1e-6)
+    thickness_scale = 0.5  # Visual scaling factor to avoid huge strokes
+
     for i, beam in enumerate(model.beams):
-        if "start" in beam and "end" in beam:
-            if beam["start"] < len(model.nodes) and beam["end"] < len(model.nodes):
-                start_pos = model.nodes[beam["start"]]["pos"]
-                end_pos = model.nodes[beam["end"]]["pos"]
-                
-                dpg.draw_line(start_pos, end_pos, color=BEAM_COLOR, thickness=2, parent="canvas")
-                
-                # Calculate midpoint
-                mid_x = (start_pos[0] + end_pos[0]) / 2
-                mid_y = (start_pos[1] + end_pos[1]) / 2
-                
-                # Draw small circle at midpoint
-                dpg.draw_circle((mid_x, mid_y), 3, color=BEAM_COLOR, fill=BEAM_COLOR, parent="canvas")
-                
-                # Draw beam label with index
-                dpg.draw_text((mid_x + 5, mid_y - 10), f"B{i}", color=(255, 255, 255, 255), parent="canvas")
-    
-    # Draw beam preview when a node is selected
+        if "start" in beam and "end" in beam and beam["start"] < len(model.nodes) and beam["end"] < len(model.nodes):
+            start_pos = model.nodes[beam["start"]]["pos"]
+            end_pos = model.nodes[beam["end"]]["pos"]
+
+            section = beam.get("section")
+            if section:
+                if section.get("shape") == "round_tube":
+                    od = section.get("outer_diameter_in", 1.0)
+                elif section.get("shape") == "square_tube":
+                    od = section.get("outer_width_in", 1.0)
+                else:
+                    od = 1.0
+                thickness = max(2, od * pixel_per_unit * thickness_scale)
+            else:
+                thickness = 2
+
+            # Draw thick beam line
+            dpg.draw_line(start_pos, end_pos, color=BEAM_COLOR, thickness=thickness, parent="canvas")
+
+            # Half-circle caps at ends if section present
+            if section:
+                dx = end_pos[0] - start_pos[0]
+                dy = end_pos[1] - start_pos[1]
+                angle = math.atan2(dy, dx)
+                # Start cap facing backwards (angle + pi)
+                _draw_half_circle(start_pos, thickness/2, angle + math.pi, BEAM_COLOR, "canvas")
+                # End cap facing forwards (angle)
+                _draw_half_circle(end_pos, thickness/2, angle, BEAM_COLOR, "canvas")
+
+            # Midpoint label & small marker (above large line if thick)
+            mid_x = (start_pos[0] + end_pos[0]) / 2
+            mid_y = (start_pos[1] + end_pos[1]) / 2
+            dpg.draw_circle((mid_x, mid_y), 3, color=BEAM_COLOR, fill=BEAM_COLOR, parent="canvas")
+
+            label = f"B{i}"
+            if section:
+                # Short descriptor
+                if section.get("shape") == "round_tube":
+                    label += f" {section.get('outer_diameter_in', 0):.2f}x{section.get('wall_thickness_in',0):.3f}"
+                elif section.get("shape") == "square_tube":
+                    label += f" {section.get('outer_width_in', 0):.2f}sq"
+            dpg.draw_text((mid_x + 5, mid_y - 10), label, color=(255,255,255,255), parent="canvas")
+
+    # Preview line
     if mouse_pos is not None and model.selected_node is not None and model.selected_node < len(model.nodes):
         try:
             start_pos = model.nodes[model.selected_node]["pos"]
-            
-            # Make sure mouse_pos has valid coordinates
             if isinstance(mouse_pos, tuple) and len(mouse_pos) == 2:
                 dpg.draw_line(start_pos, mouse_pos, color=BEAM_HOVER_COLOR, thickness=1, style=2, parent="canvas")
-            else:
-                print(f"Warning: Invalid mouse position format: {mouse_pos}")
         except Exception as e:
             print(f"Error drawing beam preview: {e}")
 
@@ -190,77 +228,9 @@ def draw_everything(model, mouse_pos=None, scale_factor=1.0):
         
         # Redraw everything
         draw_grid(scale_factor)
-        draw_beams(model, mouse_pos)
+        draw_beams(model, mouse_pos, scale_factor)
         draw_nodes(model)
         draw_fixtures(model)
         draw_masses(model)
     except Exception as e:
         print(f"Error in draw_everything: {e}")
-
-def create_ui(add_node_callback, add_beam_callback, add_fixture_callback, 
-              add_mass_callback, delete_callback, clear_all_callback, canvas_click_callback):
-    """Create the main user interface with a dedicated drawing area"""
-    with dpg.window(label="Motorcycle Frame Designer", tag="main_window", no_close=True):
-        with dpg.group(horizontal=True):
-            # Left sidebar for tools
-            with dpg.child_window(width=SIDEBAR_WIDTH, height=CANVAS_HEIGHT, tag="sidebar"):
-                dpg.add_text("Tools", color=(255, 255, 0))
-                dpg.add_separator()
-                
-                # Tool buttons with highlighted frames
-                # ... existing button code ...
-                
-                dpg.add_spacer(height=10)
-                dpg.add_separator()
-                dpg.add_spacer(height=10)
-                
-                # Grid settings
-                dpg.add_text("Grid Settings", color=(255, 255, 0))
-                
-                def update_grid_scale(sender, app_data):
-                    # Update the grid scale factor
-                    # We need to access the global grid_scale_factor from main_frame_design.py
-                    # We'll import it explicitly here
-                    import sys
-                    main_module = sys.modules['__main__']
-                    if hasattr(main_module, 'grid_scale_factor'):
-                        main_module.grid_scale_factor = app_data
-                        # Redraw everything with new scale
-                        if hasattr(main_module, 'model'):
-                            draw_everything(main_module.model, None, app_data)
-                    else:
-                        print("Warning: Could not update grid scale factor")
-                
-                # Add a slider to control grid scale
-                dpg.add_text("Grid Scale (units per cell)")
-                dpg.add_slider_float(
-                    default_value=1.0,
-                    min_value=0.1, 
-                    max_value=10.0,
-                    callback=update_grid_scale,
-                    tag="grid_scale_slider",
-                    width=180
-                )
-                
-                # Add a button to reset grid scale
-                dpg.add_button(
-                    label="Reset Scale", 
-                    callback=lambda: dpg.set_value("grid_scale_slider", 1.0),
-                    width=180
-                )
-                
-                dpg.add_spacer(height=10)
-                
-                # Statistics section (already in your code)
-                dpg.add_separator()
-                dpg.add_text("Statistics", color=(255, 255, 0))
-                # ...existing stats code...
-                
-            # Right side: Canvas
-            with dpg.child_window(width=CANVAS_WIDTH, height=CANVAS_HEIGHT, tag="canvas_window"):
-                # Create a drawing canvas
-                with dpg.drawlist(width=CANVAS_WIDTH, height=CANVAS_HEIGHT, tag="canvas"):
-                    # The drawlist will be our canvas
-                    pass
-                
-                # No mouse handlers here - they're in frame_design_ui.py

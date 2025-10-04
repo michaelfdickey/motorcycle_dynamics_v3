@@ -4,6 +4,7 @@ Contains helper functions and utilities used across the application.
 """
 
 import os
+import json
 import dearpygui.dearpygui as dpg
 
 def load_fonts():
@@ -64,3 +65,37 @@ def get_statistics(model):
         "total_beam_length": sum(calculate_beam_length(model, beam) for beam in model.beams)
     }
     return stats
+
+_materials_cache = None
+
+def load_materials(json_path="materials.json"):
+    """Load materials/sections catalog once (cached). Returns list of entries."""
+    global _materials_cache
+    if _materials_cache is not None:
+        return _materials_cache
+    try:
+        if not os.path.isabs(json_path):
+            # Resolve relative to project root (one level up from this file's directory)
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            json_path = os.path.join(base_dir, json_path)
+        with open(json_path, 'r') as f:
+            data = json.load(f)
+        _materials_cache = data.get("materials", [])
+    except Exception as e:
+        print(f"Failed to load materials catalog: {e}")
+        _materials_cache = []
+    return _materials_cache
+
+def format_section_label(entry):
+    """Return a human-readable label for a materials entry."""
+    shape = entry.get("shape")
+    grade = entry.get("grade", "?")
+    if shape == "round_tube":
+        od = entry.get("outer_diameter_in")
+        wall = entry.get("wall_thickness_in")
+        return f"{od:.3f} OD x {wall:.3f} wall ({grade})"
+    if shape == "square_tube":
+        w = entry.get("outer_width_in")
+        wall = entry.get("wall_thickness_in")
+        return f"{w:.2f} sq x {wall:.3f} wall ({grade})"
+    return grade

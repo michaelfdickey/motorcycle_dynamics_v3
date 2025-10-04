@@ -1,6 +1,17 @@
 """
-Motorcycle Frame Design Application
-A basic structural modeling tool for motorcycle frame design
+LEGACY / DEPRECATED MODULE
+---------------------------------------------------------------------
+This Dear PyGui desktop prototype is RETIRED.
+All new development (materials catalog, section selection, analysis,
+visual overlays) now lives in the web application (FastAPI backend +
+React/TypeScript frontend under the `frontend/` directory).
+
+Do NOT add new features here. Keep only for historical reference or
+quick local experiments. If accidentally opened, exit and run the web
+stack instead.
+
+Safe to delete once full feature parity & data migration are confirmed.
+---------------------------------------------------------------------
 """
 
 import os
@@ -14,12 +25,64 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from frame_design.entities import FrameModel
 from frame_design.drawing import draw_grid, draw_everything, CANVAS_WIDTH, CANVAS_HEIGHT
 from frame_design.frame_design_ui import create_ui, update_stats, get_canvas_mouse_pos, highlight_active_tool_button
-from frame_design.utils import load_fonts
+from frame_design.utils import load_fonts, load_materials, format_section_label
 
 # Global variables
 model = FrameModel()
 selected_tool = None
 grid_scale_factor = 1.0  # Default scale: 1 grid cell = 1 unit
+materials_catalog = []
+
+def rebuild_beam_list():
+    """Recreate the beam list UI with section assignment buttons."""
+    try:
+        if not dpg.does_item_exist("beam_list_group"):
+            return
+        dpg.delete_item("beam_list_group", children_only=True)
+        for i, beam in enumerate(model.beams):
+            start = beam.get("start")
+            end = beam.get("end")
+            if start is None or end is None or start >= len(model.nodes) or end >= len(model.nodes):
+                continue
+            label = f"B{i}: N{start}-N{end}"
+            if beam.get("section"):
+                sec = beam["section"]
+                label += " | "
+                if sec.get("shape") == "round_tube":
+                    label += f"{sec.get('outer_diameter_in',0):.2f}x{sec.get('wall_thickness_in',0):.3f}"
+                elif sec.get("shape") == "square_tube":
+                    label += f"{sec.get('outer_width_in',0):.2f}sq {sec.get('wall_thickness_in',0):.3f}"
+            with dpg.group(parent="beam_list_group"):
+                dpg.add_text(label)
+                dpg.add_button(label="Set Section", width=120, callback=lambda s,a,b_idx=i: open_section_selector(b_idx))
+                dpg.add_separator()
+    except Exception as e:
+        print(f"Error rebuilding beam list: {e}")
+
+def open_section_selector(beam_index:int):
+    """Open a popup window listing available sections to assign to beam."""
+    if beam_index >= len(model.beams):
+        return
+    if dpg.does_item_exist("section_selector_window"):
+        dpg.delete_item("section_selector_window")
+    with dpg.window(label=f"Select Section for B{beam_index}", modal=True, tag="section_selector_window", width=430, height=500):
+        dpg.add_text("Round Tubes")
+        round_entries = [e for e in materials_catalog if e.get("shape") == "round_tube"]
+        round_labels = [format_section_label(e) for e in round_entries]
+        dpg.add_listbox(round_labels, num_items=8, callback=lambda s,a: _assign_section(beam_index, round_entries[a]), width=-1)
+        dpg.add_separator()
+        dpg.add_text("Square Tubes")
+        square_entries = [e for e in materials_catalog if e.get("shape") == "square_tube"]
+        square_labels = [format_section_label(e) for e in square_entries]
+        dpg.add_listbox(square_labels, num_items=8, callback=lambda s,a: _assign_section(beam_index, square_entries[a]), width=-1)
+        dpg.add_button(label="Close", callback=lambda: dpg.delete_item("section_selector_window"))
+
+def _assign_section(beam_index, section_entry):
+    model.beams[beam_index]["section"] = section_entry
+    if dpg.does_item_exist("section_selector_window"):
+        dpg.delete_item("section_selector_window")
+    rebuild_beam_list()
+    draw_everything(model, None, grid_scale_factor)
 
 # Callback functions
 def add_node_callback():
@@ -35,6 +98,7 @@ def add_beam_callback():
     print("Beam tool selected")
     highlight_active_tool_button("Add Beam")
     draw_everything(model)
+    rebuild_beam_list()
 
 def add_fixture_callback():
     global selected_tool
@@ -59,6 +123,7 @@ def clear_all_callback():
     model.clear()
     print("All entities cleared")
     draw_everything(model)
+    rebuild_beam_list()
 
 def canvas_click(sender, app_data):
     """Handle mouse clicks on the canvas"""
@@ -92,6 +157,7 @@ def canvas_click(sender, app_data):
                 model.add_beam(model.selected_node, closest_idx)
                 print(f"Created beam from {model.selected_node} to {closest_idx}")
                 model.deselect_all_nodes()
+                rebuild_beam_list()
             else:
                 # Deselect if clicking same node
                 model.deselect_all_nodes()
@@ -139,6 +205,10 @@ def main():
     # Load fonts
     load_fonts()
     
+    # Load materials catalog
+    global materials_catalog
+    materials_catalog = load_materials()
+
     # Create the UI with our callbacks
     create_ui(
         add_node_callback=add_node_callback,
@@ -162,6 +232,7 @@ def main():
     
     # Set Node tool as default and highlight it
     add_node_callback()
+    rebuild_beam_list()
     
     # Main loop
     try:

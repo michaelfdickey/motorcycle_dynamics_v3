@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { BeamInput, NodeInput, SimulationResult, ToolMode, UnitSystem, SupportType, SnapMode } from '../types';
+import { BeamInput, NodeInput, SimulationResult, ToolMode, UnitSystem, SupportType, SnapMode, BeamSection } from '../types';
 import { UNIT_FACTORS } from '../units';
 
 interface Props {
@@ -220,13 +220,47 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         </g>
       )}
       <g transform={`translate(${-panX * SCALE}, ${-panY * SCALE})`}>
-      {/* Undeformed beams */}
-  {beams.map(b => {
+      {/* Undeformed beams with optional section thickness + caps */}
+      {beams.map(b => {
         const n1 = nodes.find(n => n.id === b.node_start);
         const n2 = nodes.find(n => n.id === b.node_end);
         if (!n1 || !n2) return null;
         const deletable = mode === 'delete';
-  return <line key={b.id} x1={n1.x * SCALE} y1={n1.y * SCALE} x2={n2.x * SCALE} y2={n2.y * SCALE} stroke={deletable ? '#aa0000' : '#444'} strokeWidth={2} style={deletable ? { cursor: 'pointer' } : undefined} onClick={e => { if (deletable && onDeleteBeam) { e.stopPropagation(); onDeleteBeam(b.id); } }} />;
+        const section: BeamSection | undefined = (b as any).section;
+  // Determine physical outer size (inches) then convert to current model units.
+        let outerIn = 0;
+        if (section) {
+          if (section.shape === 'round_tube' && section.outer_diameter_in) outerIn = section.outer_diameter_in;
+          else if (section.shape === 'square_tube' && section.outer_width_in) outerIn = section.outer_width_in;
+        }
+        // Convert inches to model units if needed
+        let outerModel = outerIn;
+        if (outerIn > 0 && unitSystem === 'KMS') outerModel = outerIn * 0.0254; // inches -> meters
+  // Visual scaling: 1" tube in IPS occupies exactly 1 model unit; stroke width = physical OD/width * SCALE (no artificial cap to preserve true proportion).
+  const thicknessPx = outerModel > 0 ? Math.max(1, outerModel * SCALE) : 2;
+        const x1 = n1.x * SCALE; const y1 = n1.y * SCALE; const x2 = n2.x * SCALE; const y2 = n2.y * SCALE;
+        const dx = x2 - x1; const dy = y2 - y1; const Lpx = Math.hypot(dx, dy) || 1;
+        const ux = dx / Lpx; const uy = dy / Lpx;
+        const r = thicknessPx / 2;
+        const isRound = section && section.shape === 'round_tube';
+        // For round tubes: emulate outward half-caps by shortening line and drawing full circles under it at node centers.
+        if (isRound) {
+          // Simplest accurate depiction of round tube: a single line with round line caps produces a pill shape
+          // whose semicircular ends have diameter equal to strokeWidth (tube OD).
+          const color = deletable ? '#aa0000' : '#444';
+          return (
+            <line key={b.id+'-round'} x1={x1} y1={y1} x2={x2} y2={y2}
+              stroke={color}
+              strokeWidth={thicknessPx}
+              strokeLinecap="round"
+              style={deletable ? { cursor: 'pointer' } : undefined}
+              onClick={e => { if (deletable && onDeleteBeam) { e.stopPropagation(); onDeleteBeam(b.id); } }} />
+          );
+        }
+        // Square (or untyped) sections: simple rectangular representation via butt line full length.
+        return (
+          <line key={b.id+'-line'} x1={x1} y1={y1} x2={x2} y2={y2} stroke={deletable ? '#aa0000' : '#444'} strokeWidth={thicknessPx} strokeLinecap="butt" style={deletable ? { cursor: 'pointer' } : undefined} onClick={e => { if (deletable && onDeleteBeam) { e.stopPropagation(); onDeleteBeam(b.id); } }} />
+        );
       })}
       {/* Beam length dimensions (optional) */}
       {showDimensions && beams.map(b => {

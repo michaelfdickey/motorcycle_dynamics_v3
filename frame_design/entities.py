@@ -21,7 +21,8 @@ class FrameModel:
     def add_beam(self, start_idx, end_idx):
         """Add a beam between two nodes."""
         if start_idx < len(self.nodes) and end_idx < len(self.nodes):
-            self.beams.append({"start": start_idx, "end": end_idx})
+            # Section can later be assigned from materials catalog (e.g., tube size)
+            self.beams.append({"start": start_idx, "end": end_idx, "section": None})
             return len(self.beams) - 1
         return None
     

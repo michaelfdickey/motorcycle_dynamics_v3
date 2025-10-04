@@ -115,4 +115,30 @@ async def save_design(name: str, design: dict = Body(...)):
         raise HTTPException(status_code=500, detail=f"Write error: {e}")
     return validated
 
+# ----------------------------- Materials Catalog -----------------------------
+_materials_cache: list[dict] | None = None
+_materials_mtime: float | None = None
+
+@app.get("/materials")
+async def get_materials():
+    """Serve materials.json entries (cached)."""
+    global _materials_cache, _materials_mtime
+    # materials.json expected at project root (one level above backend directory)
+    root_dir = Path(__file__).resolve().parent.parent.parent
+    mat_path = root_dir / "materials.json"
+    if not mat_path.exists():
+        raise HTTPException(status_code=404, detail="materials.json not found")
+    try:
+        stat = mat_path.stat()
+        if _materials_cache is None or _materials_mtime != stat.st_mtime:
+            with mat_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            _materials_cache = data.get("materials", [])
+            _materials_mtime = stat.st_mtime
+        return {"materials": _materials_cache}
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Error reading materials: {e}")
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"Malformed materials.json: {e}")
+
 # To run (dev): uvicorn backend.app.main:app --reload

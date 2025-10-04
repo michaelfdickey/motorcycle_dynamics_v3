@@ -173,6 +173,11 @@ def create_ui(add_node_callback, add_beam_callback, add_fixture_callback,
                 dpg.add_separator()
                 dpg.add_text("Debug Info")
                 dpg.add_text("", tag="debug_text")
+
+                dpg.add_separator()
+                dpg.add_text("Beams", color=(255,255,0))
+                dpg.add_text("Select a beam section per element:")
+                dpg.add_child_window(height=200, width=220, tag="beam_list_group", no_scrollbar=False)
             
             # Right side: Canvas
             with dpg.child_window(width=CANVAS_WIDTH, height=CANVAS_HEIGHT, tag="canvas_window"):
