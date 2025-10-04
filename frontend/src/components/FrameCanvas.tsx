@@ -24,16 +24,34 @@ interface Props {
   onPanChange?: (px: number, py: number) => void;
   onZoomAtCursor?: (factor: number, screenX: number, screenY: number, rect: DOMRect, deltaY: number) => void;
   showDimensions?: boolean; // show beam lengths & joint angles
+  showForces?: boolean; // show force vectors & components
 }
 
 const DISP_SCALE = 200; // exaggeration factor for displacement visualization
 
-export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendingBeamStart, supports, masses, unitSystem = 'KMS', onAddNode, onNodeClick, onDeleteBeam, showGrid = false, gridSpacing = 50, snapMode = 'free', setStatus, zoomScale = 1, panX = 0, panY = 0, onPanChange, onZoomAtCursor, showDimensions = false }) => {
+export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendingBeamStart, supports, masses, unitSystem = 'KMS', onAddNode, onNodeClick, onDeleteBeam, showGrid = false, gridSpacing = 50, snapMode = 'free', setStatus, zoomScale = 1, panX = 0, panY = 0, onPanChange, onZoomAtCursor, showDimensions = false, showForces = false }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [hoverPoint, setHoverPoint] = React.useState<{x:number,y:number}|null>(null);
   const [panning, setPanning] = React.useState(false);
   const panStartRef = React.useRef<{clientX:number; clientY:number; panX:number; panY:number} | null>(null);
   const spaceDownRef = React.useRef(false);
+
+  // Wheel zoom listener (non-passive) to suppress page scroll while zooming canvas
+  React.useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const onWheelInternal = (e: WheelEvent) => {
+      if (!onZoomAtCursor) return;
+      // Only intercept if meta/ctrl not pressed (allow browser zoom shortcuts)
+      if (e.ctrlKey) return; // let pinch-to-zoom / browser gesture pass
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const factor = e.deltaY < 0 ? 1.15 : 1/1.15;
+      onZoomAtCursor(factor, e.clientX - rect.left, e.clientY - rect.top, rect as DOMRect, e.deltaY);
+    };
+    el.addEventListener('wheel', onWheelInternal, { passive: false });
+    return () => { el.removeEventListener('wheel', onWheelInternal); };
+  }, [onZoomAtCursor, zoomScale, panX, panY, gridSpacing, unitSystem]);
 
   // Track spacebar globally for space-drag panning
   React.useEffect(() => {
@@ -146,20 +164,12 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
       ref={svgRef}
   width={1600}
   height={1000}
-      style={{ border: '1px solid #888', background: '#fff', maxWidth: '100%', height: 'auto', cursor: panning ? 'grabbing' : (spaceDownRef.current ? 'grab' : 'default') }}
+      style={{ border: '1px solid #888', background: '#fff', maxWidth: '100%', height: 'auto', cursor: panning ? 'grabbing' : (spaceDownRef.current ? 'grab' : 'default'), overscrollBehavior: 'contain', touchAction: 'none' }}
       onClick={handleClick}
       onMouseDown={handleMouseDown}
       onMouseMove={(e) => { handleMouseMove(e); handleMouseMovePan(e); }}
       onMouseUp={endPan}
       onMouseLeave={() => { handleMouseLeave(); endPan(); }}
-      onWheel={(e) => {
-        if (!svgRef.current || !onZoomAtCursor) return;
-        // Prevent page scroll when zooming canvas
-        e.preventDefault();
-        const rect = svgRef.current.getBoundingClientRect();
-        const factor = e.deltaY < 0 ? 1.15 : 1/1.15;
-        onZoomAtCursor(factor, e.clientX - rect.left, e.clientY - rect.top, rect, e.deltaY);
-      }}
     >
       {showGrid && gridSpacing > 0 && (
         <g pointerEvents="none">
@@ -366,6 +376,90 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
           </g>
         );
       })}
+      {/* Force vectors at nodes (one per connected beam per node) */}
+      {showForces && result && (() => {
+        // Build lookup for axial forces by beam id (display sign already inverted downstream)
+        const axialMap = new Map<string, number>();
+        let maxAbs = 0;
+        result.internal_forces.forEach(f => {
+          const displayAxial = -f.axial; // invert for UI
+          axialMap.set(f.id, displayAxial);
+          const a = Math.abs(displayAxial); if (a > maxAbs) maxAbs = a;
+        });
+        if (maxAbs <= 0) return null;
+        const MIN_LEN_PX = 28; const MAX_LEN_PX = 110;
+        const groupElems: JSX.Element[] = [];
+        nodes.forEach(n => {
+          // Collect connected beams & their direction from node
+          const connected = beams.filter(b => b.node_start === n.id || b.node_end === n.id);
+          if (!connected.length) return;
+          type Entry = { beam: BeamInput; dirSign: number; c: number; s: number; axial: number; angle: number };
+          const entries: Entry[] = [];
+          connected.forEach(b => {
+            const axial = axialMap.get(b.id); if (axial == null || Math.abs(axial) < 1e-9) return;
+            const otherId = b.node_start === n.id ? b.node_end : b.node_start;
+            const other = nodes.find(nn => nn.id === otherId); if (!other) return;
+            const dx = other.x - n.x; const dy = other.y - n.y; const L = Math.hypot(dx, dy); if (L < 1e-9) return;
+            const c = dx / L; const s = dy / L;
+            // Arrow direction for tension: points away from node along member; compression points toward node (reverse)
+            const dirSign = axial >= 0 ? 1 : -1;
+            const angle = Math.atan2(dirSign * s, dirSign * c); // actual arrow pointing angle
+            entries.push({ beam: b, dirSign, c, s, axial, angle });
+          });
+          if (!entries.length) return;
+          // Group near-collinear angles to offset (same 5 deg bin)
+            const groups: Record<string, Entry[]> = {};
+          entries.forEach(e => {
+            const key = (Math.round((e.angle * 180/Math.PI)/5)*5).toString();
+            groups[key] = groups[key] || []; groups[key].push(e);
+          });
+          Object.values(groups).forEach(col => {
+            // Sort by magnitude so bigger near center
+            col.sort((a,b)=>Math.abs(b.axial)-Math.abs(a.axial));
+            const count = col.length;
+            const gap = 6; // px offset between stacked arrows
+            col.forEach((e, idx) => {
+              const axialAbs = Math.abs(e.axial);
+              const lenPx = MIN_LEN_PX + (axialAbs / maxAbs) * (MAX_LEN_PX - MIN_LEN_PX);
+              // Perpendicular offset for stacking
+              let stackOffset = 0;
+              if (count > 1) {
+                const base = (idx - (count -1)/2) * gap;
+                stackOffset = base;
+              }
+              const perpX = -Math.sin(e.angle); const perpY = Math.cos(e.angle);
+              const startX = n.x * SCALE + perpX * stackOffset;
+              const startY = n.y * SCALE + perpY * stackOffset;
+              // Start a little away from node radius
+              const startClear = 8; // px
+              const arrowStartX = startX + Math.cos(e.angle) * startClear;
+              const arrowStartY = startY + Math.sin(e.angle) * startClear;
+              const endX = arrowStartX + Math.cos(e.angle) * lenPx;
+              const endY = arrowStartY + Math.sin(e.angle) * lenPx;
+              const color = e.axial >= 0 ? '#d62828' : '#1d4ed8';
+              // Arrowhead
+              const ah = 8; const aw = 5;
+              const ax1 = endX - Math.cos(e.angle) * ah + Math.sin(e.angle) * aw;
+              const ay1 = endY - Math.sin(e.angle) * ah - Math.cos(e.angle) * aw;
+              const ax2 = endX - Math.cos(e.angle) * ah - Math.sin(e.angle) * aw;
+              const ay2 = endY - Math.sin(e.angle) * ah + Math.cos(e.angle) * aw;
+              const axial_lbs = (e.axial) / UNIT_FACTORS.IPS.force;
+              const label = `${Math.abs(axial_lbs).toFixed(1)} ${e.axial >=0 ? 'T' : 'C'}`;
+              // Place label near end but slightly offset back along arrow
+              const labelX = arrowStartX + Math.cos(e.angle) * (lenPx * 0.6) + perpX * 10;
+              const labelY = arrowStartY + Math.sin(e.angle) * (lenPx * 0.6) + perpY * 10;
+              groupElems.push(
+                <g key={`${n.id}-${e.beam.id}`} pointerEvents="none">
+                  <line x1={arrowStartX} y1={arrowStartY} x2={endX} y2={endY} stroke={color} strokeWidth={3} />
+                  <polygon points={`${endX},${endY} ${ax1},${ay1} ${ax2},${ay2}`} fill={color} />
+                  <text x={labelX} y={labelY} fontSize={10} fill={color} textAnchor="middle" stroke="#fff" strokeWidth={2} paintOrder="stroke" fontFamily="monospace">{label}</text>
+                </g>
+              );
+            });
+          });
+        });
+        return groupElems;
+      })()}
   {nodes.map(n => {
   const supportType = supports.get(n.id);
   const fixed = !!supportType; // for coloring

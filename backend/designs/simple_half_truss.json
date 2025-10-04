@@ -1,0 +1,126 @@
+{
+  "name": "simple_half_truss",
+  "unitSystem": "IPS",
+  "analysisType": "truss",
+  "nodes": [
+    {
+      "id": "N5",
+      "x": 72.0,
+      "y": 120.0,
+      "constraints": {
+        "fix_x": true,
+        "fix_y": true,
+        "fix_rotation": true
+      }
+    },
+    {
+      "id": "N6",
+      "x": 84.0,
+      "y": 96.0,
+      "constraints": null
+    },
+    {
+      "id": "N7",
+      "x": 96.0,
+      "y": 120.0,
+      "constraints": {
+        "fix_x": false,
+        "fix_y": true,
+        "fix_rotation": true
+      }
+    },
+    {
+      "id": "N8",
+      "x": 108.0,
+      "y": 96.0,
+      "constraints": null
+    },
+    {
+      "id": "N9",
+      "x": 108.0,
+      "y": 120.0,
+      "constraints": null
+    }
+  ],
+  "beams": [
+    {
+      "id": "B6",
+      "node_start": "N5",
+      "node_end": "N6",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002
+    },
+    {
+      "id": "B7",
+      "node_start": "N6",
+      "node_end": "N7",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002
+    },
+    {
+      "id": "B8",
+      "node_start": "N7",
+      "node_end": "N8",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002
+    },
+    {
+      "id": "B9",
+      "node_start": "N8",
+      "node_end": "N9",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002
+    },
+    {
+      "id": "B10",
+      "node_start": "N9",
+      "node_end": "N7",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002
+    },
+    {
+      "id": "B11",
+      "node_start": "N7",
+      "node_end": "N5",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002
+    },
+    {
+      "id": "B12",
+      "node_start": "N6",
+      "node_end": "N8",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002
+    }
+  ],
+  "supports": [
+    [
+      "N5",
+      "pin"
+    ],
+    [
+      "N7",
+      "roller"
+    ]
+  ],
+  "masses": [
+    {
+      "id": "M2",
+      "node_id": "N9",
+      "value": 22.05
+    }
+  ],
+  "gridSpacing": 12.0,
+  "snapMode": "minor",
+  "zoomScale": 1.1726254306399726,
+  "panX": 63.62398063053455,
+  "panY": 88.4595646969473,
+  "timestamp": 1759536329.1247177
+}
