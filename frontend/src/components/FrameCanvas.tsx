@@ -25,11 +25,12 @@ interface Props {
   onZoomAtCursor?: (factor: number, screenX: number, screenY: number, rect: DOMRect, deltaY: number) => void;
   showDimensions?: boolean; // show beam lengths & joint angles
   showForces?: boolean; // show force vectors & components
+  showStress?: boolean; // color beams by tension utilization
 }
 
 const DISP_SCALE = 200; // exaggeration factor for displacement visualization
 
-export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendingBeamStart, supports, masses, unitSystem = 'KMS', onAddNode, onNodeClick, onDeleteBeam, showGrid = false, gridSpacing = 50, snapMode = 'free', setStatus, zoomScale = 1, panX = 0, panY = 0, onPanChange, onZoomAtCursor, showDimensions = false, showForces = false }) => {
+export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendingBeamStart, supports, masses, unitSystem = 'KMS', onAddNode, onNodeClick, onDeleteBeam, showGrid = false, gridSpacing = 50, snapMode = 'free', setStatus, zoomScale = 1, panX = 0, panY = 0, onPanChange, onZoomAtCursor, showDimensions = false, showForces = false, showStress = false }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [hoverPoint, setHoverPoint] = React.useState<{x:number,y:number}|null>(null);
   const [panning, setPanning] = React.useState(false);
@@ -159,6 +160,47 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
     result.displacements.forEach(d => displacementMap.set(d.id, { ux: d.ux, uy: d.uy }));
   }
 
+  // Precompute tension utilization ratios (tension only) for coloring when showStress enabled.
+  const tensionUtilization = new Map<string, number>(); // beam.id -> ratio (>=0)
+  if (showStress && result) {
+    result.internal_forces.forEach(f => {
+      const beam = beams.find(b => b.id === f.id);
+      if (!beam) return;
+      const section: BeamSection | undefined = (beam as any).section;
+      if (!section) return;
+      const area = section.area_in2;
+      const fy = section.yield_strength_psi; // psi
+      if (!area || !fy || area <= 0 || fy <= 0) return;
+      const displayAxial = -f.axial; // invert so + = tension in UI convention
+      if (displayAxial <= 0) return; // only tension members
+      const axial_lbs = displayAxial / UNIT_FACTORS.IPS.force; // N -> lbf
+      const ratio = Math.abs(axial_lbs) / (fy * area);
+      tensionUtilization.set(beam.id, ratio);
+    });
+  }
+
+  const lerp = (a:number,b:number,t:number)=> a + (b-a)*t;
+  const toHex = (v:number)=> ('0'+Math.round(Math.min(255, Math.max(0,v))).toString(16)).slice(-2);
+  const stressColor = (ratio:number) => {
+    if (ratio <= 0) return '#00a651';
+    const r = Math.min(ratio, 1); // clamp
+    let R:number,G:number,B:number;
+    // 0 -> 0.5: green (#00a651 ~ rgb(0,166,81)) to yellow (#ffd600 rgb(255,214,0))
+    // 0.5 -> 1: yellow to red (#d50000 rgb(213,0,0))
+    if (r <= 0.5) {
+      const t = r / 0.5;
+      R = lerp(0, 255, t);
+      G = lerp(166, 214, t);
+      B = lerp(81, 0, t);
+    } else {
+      const t = (r - 0.5) / 0.5;
+      R = lerp(255, 213, t);
+      G = lerp(214, 0, t);
+      B = lerp(0, 0, t);
+    }
+    return '#' + toHex(R) + toHex(G) + toHex(B);
+  };
+
   return (
     <svg
       ref={svgRef}
@@ -226,7 +268,11 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         const n2 = nodes.find(n => n.id === b.node_end);
         if (!n1 || !n2) return null;
   const deletable = mode === 'delete';
-  const beamColor = deletable ? '#aa0000' : '#666'; // lighter gray than previous #444
+  let beamColor = deletable ? '#aa0000' : '#666'; // default base color
+        if (!deletable && showStress) {
+          const rUtil = tensionUtilization.get(b.id);
+          if (rUtil !== undefined) beamColor = stressColor(rUtil);
+        }
         const section: BeamSection | undefined = (b as any).section;
   // Determine physical outer size (inches) then convert to current model units.
         let outerIn = 0;

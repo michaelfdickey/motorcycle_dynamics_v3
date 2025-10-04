@@ -45,6 +45,7 @@ export const App: React.FC = () => {
   const [panY, setPanY] = useState<number>(0);
   const [showDimensions, setShowDimensions] = useState<boolean>(false);
   const [showForces, setShowForces] = useState<boolean>(false);
+  const [showStress, setShowStress] = useState<boolean>(false);
   // Save / Load UI state
   const [showLoadDialog, setShowLoadDialog] = useState<boolean>(false);
   const [designs, setDesigns] = useState<DesignListItem[] | null>(null);
@@ -543,6 +544,9 @@ export const App: React.FC = () => {
           <label style={{ display:'flex', alignItems:'center', gap:4 }}>
             <input type="checkbox" checked={showForces} onChange={e => setShowForces(e.target.checked)} /> forces
           </label>
+          <label style={{ display:'flex', alignItems:'center', gap:4 }}>
+            <input type="checkbox" checked={showStress} onChange={e => setShowStress(e.target.checked)} /> stress
+          </label>
         </div>
         <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem' }}>
           Mode tips: node=click empty to add (ghost preview shows snapped position; hold Alt for free) | beam=click start then end node | fixture=cycle support | mass=add lumped mass | delete=click beam or node (removes attached beams/masses/support). Units: KMS=SI, IPS=inch/lbf. Snap: major/minor/fine/free (Alt overrides to free).
@@ -589,6 +593,7 @@ export const App: React.FC = () => {
             onZoomAtCursor={(factor, sx, sy) => zoomAtCursor(factor, sx, sy)}
             showDimensions={showDimensions}
             showForces={showForces}
+            showStress={showStress}
           />
           {/* Overlay controls (zoom + pan) */}
           <div style={{ pointerEvents:'none' }}>
