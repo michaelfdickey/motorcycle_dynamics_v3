@@ -93,6 +93,8 @@ export interface BeamSection {
   weight_lb_per_ft?: number;
   yield_strength_psi?: number;
   ultimate_strength_psi?: number;
+  E_psi?: number;      // Young's modulus (psi) lazily added by backend if missing
+  I_in4?: number;      // Second moment of area (in^4) lazily added by backend if missing
 }
 
 // Persisted design shape for save/load

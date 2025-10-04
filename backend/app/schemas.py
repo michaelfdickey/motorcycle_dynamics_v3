@@ -29,6 +29,9 @@ class BeamSection(BaseModel):
     weight_lb_per_ft: float | None = None
     yield_strength_psi: float | None = None
     ultimate_strength_psi: float | None = None
+    # Newly added optional properties for Euler buckling & material stiffness
+    E_psi: float | None = None  # Young's modulus (psi)
+    I_in4: float | None = None  # Second moment of area (in^4) about principal bending axis (for square: either axis; round: same any axis)
 
 class BeamInput(BaseModel):
     id: str

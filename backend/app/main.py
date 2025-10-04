@@ -11,6 +11,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import schemas
 from .simulation import simulate_structure
 from .truss_solver import solve_truss, TrussError
+import logging
+
+logger = logging.getLogger("materials")
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter('[%(levelname)s] %(message)s'))
+    logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
 app = FastAPI(title="Motorcycle Frame Simulator API", version="0.1.0")
 
@@ -120,20 +128,74 @@ _materials_cache: list[dict] | None = None
 _materials_mtime: float | None = None
 
 @app.get("/materials")
-async def get_materials():
-    """Serve materials.json entries (cached)."""
+async def get_materials(refresh: bool = False, force_rewrite: bool = False):
+    """Serve materials.json entries.
+
+    Args:
+        refresh: Bypass cache and re-read file, recomputing any missing fields.
+        force_rewrite: Force writing file back even if nothing new was computed (normalizes formatting).
+    """
     global _materials_cache, _materials_mtime
-    # materials.json expected at project root (one level above backend directory)
     root_dir = Path(__file__).resolve().parent.parent.parent
     mat_path = root_dir / "materials.json"
     if not mat_path.exists():
         raise HTTPException(status_code=404, detail="materials.json not found")
     try:
         stat = mat_path.stat()
-        if _materials_cache is None or _materials_mtime != stat.st_mtime:
+        if refresh:
+            logger.info("/materials refresh requested; bypassing cache")
+        if _materials_cache is None or _materials_mtime != stat.st_mtime or refresh:
             with mat_path.open("r", encoding="utf-8") as f:
                 data = json.load(f)
-            _materials_cache = data.get("materials", [])
+            materials_list = data.get("materials", [])
+            updated = False
+            computed_count = 0
+            for m in materials_list:
+                if m.get("E_psi") is None:
+                    grade = (m.get("grade") or "").upper()
+                    m["E_psi"] = 29_700_000 if "4130" in grade else 29_000_000
+                    updated = True
+                if m.get("I_in4") is None:
+                    shape = m.get("shape")
+                    try:
+                        if shape == "round_tube":
+                            od = m.get("outer_diameter_in")
+                            t = m.get("wall_thickness_in")
+                            if od and t and od > 0 and t > 0:
+                                id_ = od - 2 * t
+                                if id_ < 0: id_ = 0
+                                I = (3.141592653589793 / 64.0) * (od**4 - id_**4)
+                                m["I_in4"] = round(I, 6)
+                                updated = True
+                                computed_count += 1
+                        elif shape == "square_tube":
+                            ow = m.get("outer_width_in")
+                            oh = m.get("outer_height_in")
+                            t = m.get("wall_thickness_in")
+                            if ow and oh and t and ow > 0 and oh > 0 and t > 0:
+                                iw = ow - 2 * t
+                                ih = oh - 2 * t
+                                if iw < 0: iw = 0
+                                if ih < 0: ih = 0
+                                I = (ow**4 - iw**4) / 12.0
+                                m["I_in4"] = round(I, 6)
+                                updated = True
+                                computed_count += 1
+                    except Exception:
+                        pass
+            if updated or force_rewrite:
+                try:
+                    data["materials"] = materials_list
+                    with mat_path.open("w", encoding="utf-8") as wf:
+                        json.dump(data, wf, indent=2)
+                    stat = mat_path.stat()
+                    if updated:
+                        logger.info(f"Augmented materials.json with computed fields (E/I). Newly computed I for {computed_count} entries.")
+                    else:
+                        logger.info("materials.json rewrite forced (no new fields computed).")
+                except OSError:
+                    logger.warning("Failed to write augmented materials.json; using in-memory augmented data only.")
+            _materials_cache = materials_list
             _materials_mtime = stat.st_mtime
         return {"materials": _materials_cache}
     except OSError as e:

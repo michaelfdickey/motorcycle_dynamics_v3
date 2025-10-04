@@ -472,6 +472,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         const label = `${isTension ? 'T' : 'C'} ${Math.abs(axial_lbs).toFixed(1)} lb`;
         // Tension stress utilization (only for tension beams with section data)
         let ratioElem: JSX.Element | null = null;
+        let bucklingElem: JSX.Element | null = null;
         if (isTension && (beam as any).section) {
           const section: BeamSection | undefined = (beam as any).section;
           const area = section?.area_in2; // square inches
@@ -494,11 +495,50 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
               </text>
             );
           }
+        } else if (!isTension && (beam as any).section) {
+          // Compression: Euler buckling utilization with knockdown 0.9
+          const section: BeamSection | undefined = (beam as any).section;
+          const E = section?.E_psi || 29_000_000; // psi
+          const I = section?.I_in4; // in^4
+          if (E > 0 && I && I > 0) {
+            // Beam length in inches
+            const dxw = n2.x - n1.x; const dyw = n2.y - n1.y;
+            const L_world = Math.hypot(dxw, dyw); // model units (in or m)
+            let L_in = L_world;
+            if (unitSystem === 'KMS') {
+              L_in = L_world * 39.37007874; // meters -> inches
+            }
+            if (L_in > 1e-6) {
+              const K = 1.0; // pinned-pinned baseline
+              const phi = 0.9; // knockdown factor
+              const Pcr = (Math.PI * Math.PI * E * I) / ((K * L_in) * (K * L_in)); // lbf (consistent units)
+              if (Pcr > 0) {
+                const compForce = Math.abs(axial_lbs); // positive compression magnitude
+                const util = compForce / (phi * Pcr);
+                // Place on opposite perpendicular side relative to tension ratio location to reduce overlap.
+                const dx = dxw; const dy = dyw; const Ld = Math.hypot(dx, dy) || 1;
+                const nxp = -dy / Ld; const nyp = dx / Ld;
+                const offsetScreen = 16; // px
+                // Put label on negative perpendicular side
+                const rx = mx - nxp * offsetScreen;
+                const ry = my - nyp * offsetScreen;
+                // Color scale similar thresholds
+                const fill = util >= 0.9 ? '#b91c1c' : util >= 0.7 ? '#d97706' : '#065f46';
+                bucklingElem = (
+                  <text key={f.id + '-buckling'} x={rx} y={ry - 4} fontSize={12} fill={fill}
+                        stroke="#fff" strokeWidth={2} paintOrder="stroke" textAnchor="middle" fontFamily="monospace">
+                    {util.toFixed(util >= 0.995 ? 2 : 3)}
+                  </text>
+                );
+              }
+            }
+          }
         }
         return (
           <g key={f.id + '-force'}>
             <text x={mx + 4} y={my - 4} fontSize={11} fill={color} stroke="#fff" strokeWidth={0.8} paintOrder="stroke" style={{ userSelect: 'none' }}>{label}</text>
             {ratioElem}
+            {bucklingElem}
           </g>
         );
       })}
