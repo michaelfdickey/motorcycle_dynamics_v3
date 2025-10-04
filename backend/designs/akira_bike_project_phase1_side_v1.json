@@ -1,0 +1,62 @@
+{
+  "name": "akira_bike_project_phase1_side_v1",
+  "unitSystem": "IPS",
+  "analysisType": "truss",
+  "nodes": [
+    {
+      "id": "N6",
+      "x": 0.0,
+      "y": 0.0,
+      "constraints": null
+    },
+    {
+      "id": "N7",
+      "x": 36.0,
+      "y": 0.0,
+      "constraints": null
+    },
+    {
+      "id": "N8",
+      "x": 36.0,
+      "y": -21.5,
+      "constraints": null
+    }
+  ],
+  "beams": [
+    {
+      "id": "B8",
+      "node_start": "N6",
+      "node_end": "N7",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B9",
+      "node_start": "N7",
+      "node_end": "N8",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B10",
+      "node_start": "N8",
+      "node_end": "N6",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    }
+  ],
+  "supports": [],
+  "masses": [],
+  "gridSpacing": 12.0,
+  "snapMode": "fine",
+  "zoomScale": 0.9184027777777775,
+  "panX": -2.9950102563234697,
+  "panY": -40.36046194597647,
+  "timestamp": 1759555829.28316
+}

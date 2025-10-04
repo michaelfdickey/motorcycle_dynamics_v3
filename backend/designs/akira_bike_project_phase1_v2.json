@@ -1,0 +1,218 @@
+{
+  "name": "akira_bike_project_phase1_v2",
+  "unitSystem": "IPS",
+  "analysisType": "truss",
+  "nodes": [
+    {
+      "id": "N6",
+      "x": 0.0,
+      "y": 0.0,
+      "constraints": null
+    },
+    {
+      "id": "N7",
+      "x": 36.0,
+      "y": 0.0,
+      "constraints": null
+    },
+    {
+      "id": "N13",
+      "x": 36.0,
+      "y": 3.0,
+      "constraints": null
+    },
+    {
+      "id": "N14",
+      "x": 47.0,
+      "y": 0.0,
+      "constraints": null
+    },
+    {
+      "id": "N15",
+      "x": 47.0,
+      "y": 3.0,
+      "constraints": null
+    },
+    {
+      "id": "N16",
+      "x": 47.0,
+      "y": -22.0,
+      "constraints": null
+    },
+    {
+      "id": "N17",
+      "x": 36.0,
+      "y": -22.0,
+      "constraints": null
+    },
+    {
+      "id": "N18",
+      "x": 22.0,
+      "y": -22.0,
+      "constraints": null
+    },
+    {
+      "id": "N19",
+      "x": 22.0,
+      "y": -25.0,
+      "constraints": null
+    },
+    {
+      "id": "N20",
+      "x": 47.0,
+      "y": -25.0,
+      "constraints": null
+    },
+    {
+      "id": "N21",
+      "x": 47.0,
+      "y": -36.0,
+      "constraints": null
+    }
+  ],
+  "beams": [
+    {
+      "id": "B8",
+      "node_start": "N6",
+      "node_end": "N7",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B11",
+      "node_start": "N7",
+      "node_end": "N13",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B12",
+      "node_start": "N13",
+      "node_end": "N15",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B13",
+      "node_start": "N15",
+      "node_end": "N14",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B14",
+      "node_start": "N17",
+      "node_end": "N6",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B15",
+      "node_start": "N7",
+      "node_end": "N17",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B16",
+      "node_start": "N17",
+      "node_end": "N16",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B17",
+      "node_start": "N16",
+      "node_end": "N14",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B18",
+      "node_start": "N14",
+      "node_end": "N7",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B19",
+      "node_start": "N17",
+      "node_end": "N18",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B20",
+      "node_start": "N18",
+      "node_end": "N19",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B21",
+      "node_start": "N19",
+      "node_end": "N20",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B22",
+      "node_start": "N20",
+      "node_end": "N16",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B23",
+      "node_start": "N21",
+      "node_end": "N19",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B24",
+      "node_start": "N20",
+      "node_end": "N21",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    }
+  ],
+  "supports": [],
+  "masses": [],
+  "gridSpacing": 12.0,
+  "snapMode": "minor",
+  "zoomScale": 0.6944444444444443,
+  "panX": 0.5171742427313575,
+  "panY": -50.93911298567401,
+  "timestamp": 1759556211.3942227
+}

@@ -48,8 +48,11 @@ export const App: React.FC = () => {
   const [showStress, setShowStress] = useState<boolean>(false);
   // Save / Load UI state
   const [showLoadDialog, setShowLoadDialog] = useState<boolean>(false);
+  const [showSaveDialog, setShowSaveDialog] = useState<boolean>(false);
   const [designs, setDesigns] = useState<DesignListItem[] | null>(null);
   const [loadingDesigns, setLoadingDesigns] = useState<boolean>(false);
+  const [saveName, setSaveName] = useState<string>('');
+  const [saving, setSaving] = useState<boolean>(false);
   // Materials catalog / section selection
   const [materials, setMaterials] = useState<BeamSection[] | null>(null);
   const [sectionPickerBeam, setSectionPickerBeam] = useState<string | null>(null);
@@ -384,25 +387,56 @@ export const App: React.FC = () => {
   });
 
   const handleSave = async () => {
+    // Legacy prompt save kept for fallback (not used by UI button anymore)
     const name = window.prompt('Enter design name (letters, numbers, - or _):');
     if (!name) return;
+    await performSave(name.trim(), true);
+  };
+
+  const openSaveDialog = async () => {
+    setShowSaveDialog(true);
+    setSaving(false);
+    setSaveName('');
+    setLoadingDesigns(true);
     try {
-      const design = buildDesignData(name.trim());
+      const items = await listDesigns();
+      setDesigns(items);
+    } catch (e) {
+      setDesigns([]);
+    } finally {
+      setLoadingDesigns(false);
+    }
+  };
+
+  const nameIsValid = (n: string) => /^[A-Za-z0-9_-]+$/.test(n) && n.length <= 64;
+
+  const performSave = async (rawName?: string, silentPromptFlow=false) => {
+    const name = (rawName ?? saveName).trim();
+    if (!name) { if(!silentPromptFlow) setStatus('Enter a name.'); return; }
+    if (!nameIsValid(name)) { if(!silentPromptFlow) setStatus('Invalid name (use A-Z a-z 0-9 _ - , max 64 chars).'); return; }
+    const exists = designs?.some(d => d.name === name) ?? false;
+    if (exists && !silentPromptFlow) {
+      const ok = window.confirm(`Overwrite existing design '${name}'?`);
+      if (!ok) return;
+    }
+    try {
+      setSaving(true);
       setStatus('Saving design...');
+      const design = buildDesignData(name);
       await saveDesign(design);
-      // Verify it appears in listing
+      // Refresh listing
       try {
         const all = await listDesigns();
-        if (!all.some(d => d.name === name.trim())) {
-          setStatus(`Design '${name}' save attempted, but not found in listing (backend may not be running in correct working directory).`);
-        } else {
-          setStatus(`Design '${name}' saved.`);
-        }
-      } catch {
-        setStatus(`Design '${name}' saved (listing failed).`);
+        setDesigns(all);
+      } catch { /* ignore */ }
+      setStatus(`Design '${name}' saved${exists ? ' (overwritten)' : ''}.`);
+      if (!silentPromptFlow) {
+        setShowSaveDialog(false);
       }
     } catch (e: any) {
       setStatus('Save failed: ' + e.message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -537,7 +571,7 @@ export const App: React.FC = () => {
           </fieldset>
           <button onClick={runSimulation} disabled={!nodes.length}>Simulate</button>
           <button onClick={clearAll}>Clear</button>
-          <button onClick={handleSave} disabled={!nodes.length}>Save</button>
+          <button onClick={openSaveDialog} disabled={!nodes.length}>Save</button>
           <button onClick={openLoadDialog}>Load</button>
           <label style={{ display:'flex', alignItems:'center', gap:4 }}>
             <input type="checkbox" checked={showDimensions} onChange={e => setShowDimensions(e.target.checked)} /> dims
@@ -640,6 +674,65 @@ export const App: React.FC = () => {
                   ))}
                 </ul>
               )}
+            </div>
+          </div>
+        )}
+        {showSaveDialog && (
+          <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.35)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1050 }} onClick={() => setShowSaveDialog(false)}>
+            <div style={{ background:'#fff', padding:'1rem', borderRadius:8, minWidth:420, maxHeight:'75vh', overflow:'auto' }} onClick={e => e.stopPropagation()}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'0.5rem' }}>
+                <h3 style={{ margin:0 }}>Save Design</h3>
+                <button onClick={()=>setShowSaveDialog(false)}>✕</button>
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:'0.5rem' }}>
+                <label style={{ fontSize:'0.75rem', display:'flex', flexDirection:'column', gap:4 }}>
+                  <span>Design Name</span>
+                  <input
+                    value={saveName}
+                    onChange={e=>setSaveName(e.target.value)}
+                    placeholder='Enter new or select existing'
+                    style={{ padding:'4px 6px', fontSize:'0.85rem' }}
+                    autoFocus
+                  />
+                </label>
+                {!nameIsValid(saveName) && saveName.length > 0 && (
+                  <div style={{ fontSize:'0.65rem', color:'#b00020' }}>Allowed: A-Z a-z 0-9 _ - (max 64 chars)</div>
+                )}
+                {designs && designs.some(d=>d.name===saveName.trim()) && nameIsValid(saveName) && (
+                  <div style={{ fontSize:'0.65rem', color:'#8a4500', background:'#fff4e5', padding:'4px 6px', border:'1px solid #f1c48b', borderRadius:4 }}>
+                    Will overwrite existing design. Confirmation required when saving.
+                  </div>
+                )}
+                <div style={{ fontSize:'0.7rem', color:'#444' }}>Click a name below to populate the field, or enter a new name.</div>
+                <div style={{ border:'1px solid #ddd', borderRadius:4, padding:'4px', maxHeight:180, overflow:'auto', background:'#fafafa' }}>
+                  {loadingDesigns && <div style={{ fontSize:'0.7rem' }}>Loading list...</div>}
+                  {!loadingDesigns && designs && designs.length === 0 && <div style={{ fontSize:'0.7rem' }}>No existing designs.</div>}
+                  {!loadingDesigns && designs && designs.length > 0 && (
+                    <ul style={{ listStyle:'none', margin:0, padding:0, display:'flex', flexDirection:'column', gap:2 }}>
+                      {designs.slice().sort((a,b)=> b.modified - a.modified).map(d => {
+                        const selected = d.name === saveName.trim();
+                        return (
+                          <li key={d.name} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'4px 6px', border:'1px solid '+(selected?'#0a558c':'#e0e0e0'), background:selected?'#e8f3fa':'#fff', borderRadius:4, cursor:'pointer' }} onClick={()=>setSaveName(d.name)}>
+                            <div style={{ display:'flex', flexDirection:'column' }}>
+                              <strong style={{ fontSize:'0.75rem' }}>{d.name}</strong>
+                              <span style={{ fontSize:'0.55rem', color:'#555' }}>{new Date(d.modified*1000).toLocaleString()}</span>
+                            </div>
+                            <span style={{ fontSize:'0.55rem', color:'#666' }}>overwrite</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+                <div style={{ display:'flex', justifyContent:'flex-end', gap:'0.5rem', marginTop:'0.5rem' }}>
+                  <button onClick={()=>setShowSaveDialog(false)} disabled={saving}>Cancel</button>
+                  <button
+                    onClick={()=>performSave()}
+                    disabled={saving || !nameIsValid(saveName) || !nodes.length}
+                    style={{ minWidth:90 }}
+                  >{saving? 'Saving...' : 'Save'}</button>
+                </div>
+              </div>
             </div>
           </div>
         )}

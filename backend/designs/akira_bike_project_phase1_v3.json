@@ -1,0 +1,425 @@
+{
+  "name": "akira_bike_project_phase1_v3",
+  "unitSystem": "IPS",
+  "analysisType": "truss",
+  "nodes": [
+    {
+      "id": "N6",
+      "x": 0.0,
+      "y": 0.0,
+      "constraints": null
+    },
+    {
+      "id": "N7",
+      "x": 36.0,
+      "y": 0.0,
+      "constraints": null
+    },
+    {
+      "id": "N13",
+      "x": 36.0,
+      "y": 3.0,
+      "constraints": null
+    },
+    {
+      "id": "N14",
+      "x": 47.0,
+      "y": 0.0,
+      "constraints": null
+    },
+    {
+      "id": "N15",
+      "x": 47.0,
+      "y": 3.0,
+      "constraints": null
+    },
+    {
+      "id": "N16",
+      "x": 47.0,
+      "y": -22.0,
+      "constraints": null
+    },
+    {
+      "id": "N17",
+      "x": 36.0,
+      "y": -22.0,
+      "constraints": null
+    },
+    {
+      "id": "N18",
+      "x": 22.0,
+      "y": -22.0,
+      "constraints": null
+    },
+    {
+      "id": "N19",
+      "x": 22.0,
+      "y": -25.0,
+      "constraints": null
+    },
+    {
+      "id": "N20",
+      "x": 47.0,
+      "y": -25.0,
+      "constraints": null
+    },
+    {
+      "id": "N21",
+      "x": 47.0,
+      "y": -36.0,
+      "constraints": null
+    },
+    {
+      "id": "N23",
+      "x": 57.0,
+      "y": 0.0,
+      "constraints": null
+    },
+    {
+      "id": "N24",
+      "x": 57.0,
+      "y": 3.0,
+      "constraints": null
+    },
+    {
+      "id": "N25",
+      "x": 67.0,
+      "y": 0.0,
+      "constraints": null
+    },
+    {
+      "id": "N26",
+      "x": 67.0,
+      "y": 3.0,
+      "constraints": null
+    },
+    {
+      "id": "N27",
+      "x": 96.0,
+      "y": 0.0,
+      "constraints": null
+    },
+    {
+      "id": "N28",
+      "x": 82.0,
+      "y": -16.0,
+      "constraints": null
+    },
+    {
+      "id": "N29",
+      "x": 99.0,
+      "y": -6.0,
+      "constraints": null
+    },
+    {
+      "id": "N30",
+      "x": 103.0,
+      "y": -10.0,
+      "constraints": null
+    },
+    {
+      "id": "N31",
+      "x": 96.0,
+      "y": -17.0,
+      "constraints": null
+    }
+  ],
+  "beams": [
+    {
+      "id": "B8",
+      "node_start": "N6",
+      "node_end": "N7",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B11",
+      "node_start": "N7",
+      "node_end": "N13",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B12",
+      "node_start": "N13",
+      "node_end": "N15",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B13",
+      "node_start": "N15",
+      "node_end": "N14",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B14",
+      "node_start": "N17",
+      "node_end": "N6",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B15",
+      "node_start": "N7",
+      "node_end": "N17",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B16",
+      "node_start": "N17",
+      "node_end": "N16",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B17",
+      "node_start": "N16",
+      "node_end": "N14",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B18",
+      "node_start": "N14",
+      "node_end": "N7",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B19",
+      "node_start": "N17",
+      "node_end": "N18",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B20",
+      "node_start": "N18",
+      "node_end": "N19",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B21",
+      "node_start": "N19",
+      "node_end": "N20",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B22",
+      "node_start": "N20",
+      "node_end": "N16",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B23",
+      "node_start": "N21",
+      "node_end": "N19",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B24",
+      "node_start": "N20",
+      "node_end": "N21",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B25",
+      "node_start": "N15",
+      "node_end": "N24",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B26",
+      "node_start": "N24",
+      "node_end": "N26",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B27",
+      "node_start": "N26",
+      "node_end": "N25",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B28",
+      "node_start": "N25",
+      "node_end": "N23",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B29",
+      "node_start": "N23",
+      "node_end": "N24",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B30",
+      "node_start": "N14",
+      "node_end": "N23",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B31",
+      "node_start": "N25",
+      "node_end": "N16",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B32",
+      "node_start": "N26",
+      "node_end": "N27",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B33",
+      "node_start": "N27",
+      "node_end": "N25",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B34",
+      "node_start": "N24",
+      "node_end": "N28",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B35",
+      "node_start": "N28",
+      "node_end": "N26",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B36",
+      "node_start": "N27",
+      "node_end": "N28",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B37",
+      "node_start": "N27",
+      "node_end": "N29",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B38",
+      "node_start": "N30",
+      "node_end": "N29",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B39",
+      "node_start": "N29",
+      "node_end": "N28",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B40",
+      "node_start": "N30",
+      "node_end": "N31",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    },
+    {
+      "id": "B41",
+      "node_start": "N31",
+      "node_end": "N28",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": null
+    }
+  ],
+  "supports": [],
+  "masses": [],
+  "gridSpacing": 12.0,
+  "snapMode": "minor",
+  "zoomScale": 0.5448842419716206,
+  "panX": -18.97368421052633,
+  "panY": -60.54605263157895,
+  "timestamp": 1759556631.9506118
+}
