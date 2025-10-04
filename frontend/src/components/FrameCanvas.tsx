@@ -179,6 +179,32 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
     });
   }
 
+  // Compression (buckling) utilization map using Euler with knockdown phi=0.9 (only if stress overlay enabled)
+  const compressionUtilization = new Map<string, number>(); // beam.id -> ratio
+  if (showStress && result) {
+    const PHI = 0.9; // knockdown factor
+    const K = 1.0;   // effective length factor (pinned-pinned)
+    result.internal_forces.forEach(f => {
+      const beam = beams.find(b => b.id === f.id); if (!beam) return;
+      const section: BeamSection | undefined = (beam as any).section; if (!section) return;
+      const I = section.I_in4; const E = section.E_psi || 29_000_000; // psi & in^4
+      if (!I || I <= 0 || !E || E <= 0) return;
+      const n1 = nodes.find(n => n.id === beam.node_start); const n2 = nodes.find(n => n.id === beam.node_end); if (!n1 || !n2) return;
+      const displayAxial = -f.axial; // invert sign: + tension, - compression? (Earlier: + tension, so compression => displayAxial < 0)
+      if (displayAxial >= 0) return; // we only want compression members
+      const axial_lbs = Math.abs(displayAxial) / UNIT_FACTORS.IPS.force; // compression magnitude in lbf
+      // Length in inches
+      const dx = n2.x - n1.x; const dy = n2.y - n1.y; let L = Math.hypot(dx, dy);
+      if (L <= 1e-6) return;
+      if (unitSystem === 'KMS') { L *= 39.37007874; } // meters -> inches
+      const KL = K * L;
+      const Pcr = (Math.PI * Math.PI * E * I) / (KL * KL); // lbf
+      if (Pcr <= 0) return;
+      const util = axial_lbs / (PHI * Pcr);
+      compressionUtilization.set(beam.id, util);
+    });
+  }
+
   const lerp = (a:number,b:number,t:number)=> a + (b-a)*t;
   const toHex = (v:number)=> ('0'+Math.round(Math.min(255, Math.max(0,v))).toString(16)).slice(-2);
   const stressColor = (ratio:number) => {
@@ -270,8 +296,13 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
   const deletable = mode === 'delete';
   let beamColor = deletable ? '#aa0000' : '#666'; // default base color
         if (!deletable && showStress) {
-          const rUtil = tensionUtilization.get(b.id);
-          if (rUtil !== undefined) beamColor = stressColor(rUtil);
+          let rUtil = tensionUtilization.get(b.id);
+          if (rUtil === undefined) {
+            rUtil = compressionUtilization.get(b.id);
+          }
+          if (rUtil !== undefined) {
+            beamColor = stressColor(rUtil);
+          }
         }
         const section: BeamSection | undefined = (b as any).section;
   // Determine physical outer size (inches) then convert to current model units.
