@@ -377,7 +377,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         );
       })}
       {/* Force vectors at nodes (one per connected beam per node) */}
-      {showForces && result && (() => {
+  {showForces && result && (() => {
         // Build lookup for axial forces by beam id (display sign already inverted downstream)
         const axialMap = new Map<string, number>();
         let maxAbs = 0;
@@ -448,8 +448,54 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
               // Place label near end but slightly offset back along arrow
               const labelX = arrowStartX + Math.cos(e.angle) * (lenPx * 0.6) + perpX * 10;
               const labelY = arrowStartY + Math.sin(e.angle) * (lenPx * 0.6) + perpY * 10;
+
+              // Component arrows (Fx, Fy) for non-axis-aligned resultant
+              const compElems: JSX.Element[] = [];
+              const isAngled = Math.abs(e.c) > 0.05 && Math.abs(e.s) > 0.05;
+              if (isAngled) {
+                // Use same length scaling to derive component pixel lengths
+                const compScale = lenPx / (Math.abs(e.c) + Math.abs(e.s)); // simple proportional scaling
+                const fxLenPx = Math.abs(e.c) * compScale * (Math.abs(e.c)+Math.abs(e.s));
+                const fyLenPx = Math.abs(e.s) * compScale * (Math.abs(e.c)+Math.abs(e.s));
+                const compColorX = '#2d6a4f';
+                const compColorY = '#6d28d9';
+                // Horizontal component arrow (sign depends on projection of resultant)
+                const signFx = Math.sign(e.c) * (e.axial >=0 ? 1 : -1);
+                const fxEndX = arrowStartX + signFx * fxLenPx;
+                const fxEndY = arrowStartY;
+                const fxAh = 6; const fxAw = 4;
+                const fxAng = 0; // horizontal
+                const fxAx1 = fxEndX - signFx * fxAh + 0 * fxAw;
+                const fxAy1 = fxEndY - fxAw;
+                const fxAx2 = fxEndX - signFx * fxAh - 0 * fxAw;
+                const fxAy2 = fxEndY + fxAw;
+                const fx_lbs = axial_lbs * e.c; // component in lbs
+                compElems.push(
+                  <g key={`fx-${n.id}-${e.beam.id}`} pointerEvents="none">
+                    <line x1={arrowStartX} y1={arrowStartY} x2={fxEndX} y2={fxEndY} stroke={compColorX} strokeWidth={2} />
+                    <polygon points={`${fxEndX},${fxEndY} ${fxAx1},${fxAy1} ${fxAx2},${fxAy2}`} fill={compColorX} />
+                    <text x={(arrowStartX+fxEndX)/2} y={fxEndY - 6} fontSize={9} fill={compColorX} textAnchor="middle" stroke="#fff" strokeWidth={2} paintOrder="stroke">{Math.abs(fx_lbs).toFixed(1)}x</text>
+                  </g>
+                );
+                // Vertical component
+                const signFy = Math.sign(e.s) * (e.axial >=0 ? 1 : -1);
+                const fyEndX = arrowStartX;
+                const fyEndY = arrowStartY + signFy * fyLenPx;
+                const fyAh = 6; const fyAw = 4;
+                const fyAx1 = fyEndX - fyAw; const fyAy1 = fyEndY - signFy * fyAh;
+                const fyAx2 = fyEndX + fyAw; const fyAy2 = fyEndY - signFy * fyAh;
+                const fy_lbs = axial_lbs * e.s;
+                compElems.push(
+                  <g key={`fy-${n.id}-${e.beam.id}`} pointerEvents="none">
+                    <line x1={arrowStartX} y1={arrowStartY} x2={fyEndX} y2={fyEndY} stroke={compColorY} strokeWidth={2} />
+                    <polygon points={`${fyEndX},${fyEndY} ${fyAx1},${fyAy1} ${fyAx2},${fyAy2}`} fill={compColorY} />
+                    <text x={fyEndX - 6} y={(arrowStartY+fyEndY)/2} fontSize={9} fill={compColorY} textAnchor="end" stroke="#fff" strokeWidth={2} paintOrder="stroke">{Math.abs(fy_lbs).toFixed(1)}y</text>
+                  </g>
+                );
+              }
               groupElems.push(
                 <g key={`${n.id}-${e.beam.id}`} pointerEvents="none">
+                  {compElems}
                   <line x1={arrowStartX} y1={arrowStartY} x2={endX} y2={endY} stroke={color} strokeWidth={3} />
                   <polygon points={`${endX},${endY} ${ax1},${ay1} ${ax2},${ay2}`} fill={color} />
                   <text x={labelX} y={labelY} fontSize={10} fill={color} textAnchor="middle" stroke="#fff" strokeWidth={2} paintOrder="stroke" fontFamily="monospace">{label}</text>
