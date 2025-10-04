@@ -23,11 +23,12 @@ interface Props {
   panY?: number;
   onPanChange?: (px: number, py: number) => void;
   onZoomAtCursor?: (factor: number, screenX: number, screenY: number, rect: DOMRect, deltaY: number) => void;
+  showDimensions?: boolean; // show beam lengths & joint angles
 }
 
 const DISP_SCALE = 200; // exaggeration factor for displacement visualization
 
-export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendingBeamStart, supports, masses, unitSystem = 'KMS', onAddNode, onNodeClick, onDeleteBeam, showGrid = false, gridSpacing = 50, snapMode = 'free', setStatus, zoomScale = 1, panX = 0, panY = 0, onPanChange, onZoomAtCursor }) => {
+export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendingBeamStart, supports, masses, unitSystem = 'KMS', onAddNode, onNodeClick, onDeleteBeam, showGrid = false, gridSpacing = 50, snapMode = 'free', setStatus, zoomScale = 1, panX = 0, panY = 0, onPanChange, onZoomAtCursor, showDimensions = false }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [hoverPoint, setHoverPoint] = React.useState<{x:number,y:number}|null>(null);
   const [panning, setPanning] = React.useState(false);
@@ -217,6 +218,123 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         const deletable = mode === 'delete';
   return <line key={b.id} x1={n1.x * SCALE} y1={n1.y * SCALE} x2={n2.x * SCALE} y2={n2.y * SCALE} stroke={deletable ? '#aa0000' : '#444'} strokeWidth={2} style={deletable ? { cursor: 'pointer' } : undefined} onClick={e => { if (deletable && onDeleteBeam) { e.stopPropagation(); onDeleteBeam(b.id); } }} />;
       })}
+      {/* Beam length dimensions (optional) */}
+      {showDimensions && beams.map(b => {
+        const n1 = nodes.find(n => n.id === b.node_start);
+        const n2 = nodes.find(n => n.id === b.node_end);
+        if (!n1 || !n2) return null;
+        const dx = n2.x - n1.x; const dy = n2.y - n1.y;
+        const L = Math.hypot(dx, dy);
+        if (L < 1e-6) return null;
+        // Skip extremely short beams to reduce clutter (threshold in model units)
+        const minDisplay = unitSystem === 'IPS' ? 0.25 : 0.01;
+        if (L < minDisplay) return null;
+        const mx = (n1.x + n2.x) / 2; const my = (n1.y + n2.y) / 2;
+        // Perpendicular offset (world units) for dimension line
+        const offsetPx = 18; // screen space
+        const offWorld = offsetPx / SCALE;
+        const nx = -dy / L; const ny = dx / L;
+        const ox = nx * offWorld; const oy = ny * offWorld;
+        // Endpoints for offset dimension line (slightly inset from real ends)
+        const inset = Math.min(L * 0.05, 0.4); // world
+        const ix1 = n1.x + (dx / L) * inset + ox;
+        const iy1 = n1.y + (dy / L) * inset + oy;
+        const ix2 = n2.x - (dx / L) * inset + ox;
+        const iy2 = n2.y - (dy / L) * inset + oy;
+        const sx1 = ix1 * SCALE; const sy1 = iy1 * SCALE; const sx2 = ix2 * SCALE; const sy2 = iy2 * SCALE;
+        const ex1 = n1.x * SCALE; const ey1 = n1.y * SCALE; const ex2 = n2.x * SCALE; const ey2 = n2.y * SCALE;
+        // Format length
+        let label: string;
+        if (unitSystem === 'IPS') {
+          label = L.toFixed(L >= 100 ? 0 : L >= 10 ? 1 : 2) + ' in';
+        } else {
+          label = (L >= 1 ? L.toFixed(2) : (L*100).toFixed(1)+' cm');
+        }
+        // Arrow heads (simple lines)
+        const arrowSize = 6;
+        const ux = dx / L; const uy = dy / L;
+        const ax1x = sx1 + ux * arrowSize; const ax1y = sy1 + uy * arrowSize;
+        const ax2x = sx2 - ux * arrowSize; const ax2y = sy2 - uy * arrowSize;
+        return (
+          <g key={b.id + '-dim'} stroke="#2d6a4f" strokeWidth={1} fill="none" pointerEvents="none">
+            {/* Extension lines */}
+            <line x1={ex1} y1={ey1} x2={sx1} y2={sy1} stroke="#2d6a4f" strokeDasharray="2 3" />
+            <line x1={ex2} y1={ey2} x2={sx2} y2={sy2} stroke="#2d6a4f" strokeDasharray="2 3" />
+            {/* Dimension line */}
+            <line x1={sx1} y1={sy1} x2={sx2} y2={sy2} />
+            {/* Arrows */}
+            <line x1={sx1} y1={sy1} x2={ax1x} y2={ax1y} />
+            <line x1={sx2} y1={sy2} x2={ax2x} y2={ax2y} />
+            <text x={mx * SCALE + ox * SCALE} y={my * SCALE + oy * SCALE - 3} fontSize={11} fill="#2d6a4f" textAnchor="middle" fontFamily="monospace" stroke="#fff" strokeWidth={2} paintOrder="stroke">{label}</text>
+          </g>
+        );
+      })}
+      {/* Joint angle dimensions (unique acute/right angles only) */}
+      {showDimensions && (() => {
+        const elems: JSX.Element[] = [];
+        const shownKey = new Set<string>();
+        const ACUTE_LIMIT = 90.5; // degrees inclusive with small tolerance
+        nodes.forEach(n => {
+          const connected = beams.filter(b => b.node_start === n.id || b.node_end === n.id);
+          if (connected.length < 2 || connected.length > 6) return; // skip overly busy for clarity
+          // Build vectors
+          const vecs = connected.map(b => {
+            const otherId = b.node_start === n.id ? b.node_end : b.node_start;
+            const other = nodes.find(nd => nd.id === otherId);
+            if (!other) return null;
+            const dx = other.x - n.x; const dy = other.y - n.y; const L = Math.hypot(dx, dy);
+            if (L < 1e-6) return null;
+            return { b, dx, dy, L };
+          }).filter(Boolean) as {b:BeamInput; dx:number; dy:number; L:number}[];
+          for (let i=0;i<vecs.length;i++) {
+            for (let j=i+1;j<vecs.length;j++) {
+              const v1 = vecs[i]; const v2 = vecs[j];
+              // Unordered key to avoid duplicates
+              const key = [n.id, v1.b.id, v2.b.id].sort().join('-');
+              if (shownKey.has(key)) continue;
+              const dot = v1.dx * v2.dx + v1.dy * v2.dy;
+              const cos = dot / (v1.L * v2.L);
+              const clamped = Math.min(1, Math.max(-1, cos));
+              let ang = Math.acos(clamped); // 0..pi
+              let deg = ang * 180 / Math.PI;
+              if (deg < 2 || deg > ACUTE_LIMIT) continue; // only acute or right; skip very small (~collinear) and obtuse
+              shownKey.add(key);
+              // Determine consistent start angle & sweep direction (shortest arc)
+              const a1 = Math.atan2(v1.dy, v1.dx);
+              const a2 = Math.atan2(v2.dy, v2.dx);
+              let diff = a2 - a1;
+              while (diff <= -Math.PI) diff += 2*Math.PI;
+              while (diff > Math.PI) diff -= 2*Math.PI;
+              let start = a1; let sweep = diff;
+              if (sweep < 0) { start = a2; sweep = -diff; }
+              if (sweep > Math.PI) sweep = 2*Math.PI - sweep; // ensure acute path
+              // Arc radius heuristic based on shorter member
+              const minLen = Math.min(v1.L, v2.L);
+              const rWorld = Math.min(Math.max(minLen * 0.28, unitSystem==='IPS'?0.4:0.08), unitSystem==='IPS'?4:1.0);
+              const rPx = rWorld * SCALE;
+              if (rPx < 10) continue;
+              const steps = Math.max(6, Math.floor(sweep * 20));
+              const pts: string[] = [];
+              for (let s=0;s<=steps;s++) {
+                const t = s/steps;
+                const angCur = start + sweep * t;
+                pts.push(`${(n.x + Math.cos(angCur)*rWorld)*SCALE},${(n.y + Math.sin(angCur)*rWorld)*SCALE}`);
+              }
+              const labelDeg = (Math.round(deg*10)/10).toFixed(1) + '°';
+              const midAng = start + sweep/2;
+              const lx = (n.x + Math.cos(midAng)*(rWorld + 6 / SCALE)) * SCALE;
+              const ly = (n.y + Math.sin(midAng)*(rWorld + 6 / SCALE)) * SCALE;
+              elems.push(
+                <g key={key} pointerEvents="none">
+                  <polyline points={pts.join(' ')} fill="none" stroke="#6a4c93" strokeWidth={1} />
+                  <text x={lx} y={ly} fontSize={10} fill="#6a4c93" textAnchor="middle" fontFamily="monospace" stroke="#fff" strokeWidth={2} paintOrder="stroke">{labelDeg}</text>
+                </g>
+              );
+            }
+          }
+        });
+        return elems;
+      })()}
       {/* Deformed shape */}
       {result && beams.map(b => {
         const n1 = nodes.find(n => n.id === b.node_start);

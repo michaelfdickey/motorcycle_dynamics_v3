@@ -43,6 +43,7 @@ export const App: React.FC = () => {
   const [zoomScale, setZoomScale] = useState<number>(1); // continuous zoom multiplier
   const [panX, setPanX] = useState<number>(0); // model units offset
   const [panY, setPanY] = useState<number>(0);
+  const [showDimensions, setShowDimensions] = useState<boolean>(false);
   // Save / Load UI state
   const [showLoadDialog, setShowLoadDialog] = useState<boolean>(false);
   const [designs, setDesigns] = useState<DesignListItem[] | null>(null);
@@ -527,6 +528,9 @@ export const App: React.FC = () => {
           <button onClick={clearAll}>Clear</button>
           <button onClick={handleSave} disabled={!nodes.length}>Save</button>
           <button onClick={openLoadDialog}>Load</button>
+          <label style={{ display:'flex', alignItems:'center', gap:4 }}>
+            <input type="checkbox" checked={showDimensions} onChange={e => setShowDimensions(e.target.checked)} /> dims
+          </label>
         </div>
         <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem' }}>
           Mode tips: node=click empty to add (ghost preview shows snapped position; hold Alt for free) | beam=click start then end node | fixture=cycle support | mass=add lumped mass | delete=click beam or node (removes attached beams/masses/support). Units: KMS=SI, IPS=inch/lbf. Snap: major/minor/fine/free (Alt overrides to free).
@@ -571,6 +575,7 @@ export const App: React.FC = () => {
             panY={panY}
             onPanChange={(px,py) => { setPanX(px); setPanY(py); }}
             onZoomAtCursor={(factor, sx, sy) => zoomAtCursor(factor, sx, sy)}
+            showDimensions={showDimensions}
           />
           {/* Overlay controls (zoom + pan) */}
           <div style={{ pointerEvents:'none' }}>
