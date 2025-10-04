@@ -1,0 +1,169 @@
+{
+  "name": "simple_triangle_v2",
+  "unitSystem": "IPS",
+  "analysisType": "truss",
+  "nodes": [
+    {
+      "id": "N1",
+      "x": 72.0,
+      "y": 108.0,
+      "constraints": {
+        "fix_x": true,
+        "fix_y": true,
+        "fix_rotation": true
+      }
+    },
+    {
+      "id": "N2",
+      "x": 144.0,
+      "y": 108.0,
+      "constraints": {
+        "fix_x": false,
+        "fix_y": true,
+        "fix_rotation": true
+      }
+    },
+    {
+      "id": "N3",
+      "x": 108.0,
+      "y": 108.0,
+      "constraints": null
+    },
+    {
+      "id": "N4",
+      "x": 108.0,
+      "y": 84.0,
+      "constraints": null
+    }
+  ],
+  "beams": [
+    {
+      "id": "B1",
+      "node_start": "N1",
+      "node_end": "N3",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": {
+        "material": "steel",
+        "grade": "A500_GRB",
+        "shape": "square_tube",
+        "outer_diameter_in": null,
+        "outer_width_in": 1.0,
+        "outer_height_in": 1.0,
+        "wall_thickness_in": 0.083,
+        "area_in2": 0.30444,
+        "weight_lb_per_ft": 1.034,
+        "yield_strength_psi": 46000.0,
+        "ultimate_strength_psi": 58000.0
+      }
+    },
+    {
+      "id": "B2",
+      "node_start": "N3",
+      "node_end": "N2",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": {
+        "material": "steel",
+        "grade": "A500_GRB",
+        "shape": "square_tube",
+        "outer_diameter_in": null,
+        "outer_width_in": 1.0,
+        "outer_height_in": 1.0,
+        "wall_thickness_in": 0.083,
+        "area_in2": 0.30444,
+        "weight_lb_per_ft": 1.034,
+        "yield_strength_psi": 46000.0,
+        "ultimate_strength_psi": 58000.0
+      }
+    },
+    {
+      "id": "B3",
+      "node_start": "N2",
+      "node_end": "N4",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": {
+        "material": "steel",
+        "grade": "A500_GRB",
+        "shape": "square_tube",
+        "outer_diameter_in": null,
+        "outer_width_in": 1.0,
+        "outer_height_in": 1.0,
+        "wall_thickness_in": 0.083,
+        "area_in2": 0.30444,
+        "weight_lb_per_ft": 1.034,
+        "yield_strength_psi": 46000.0,
+        "ultimate_strength_psi": 58000.0
+      }
+    },
+    {
+      "id": "B4",
+      "node_start": "N4",
+      "node_end": "N3",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": {
+        "material": "steel",
+        "grade": "A500_GRB",
+        "shape": "square_tube",
+        "outer_diameter_in": null,
+        "outer_width_in": 1.0,
+        "outer_height_in": 1.0,
+        "wall_thickness_in": 0.083,
+        "area_in2": 0.30444,
+        "weight_lb_per_ft": 1.034,
+        "yield_strength_psi": 46000.0,
+        "ultimate_strength_psi": 58000.0
+      }
+    },
+    {
+      "id": "B5",
+      "node_start": "N4",
+      "node_end": "N1",
+      "E": 30000000.0,
+      "I": 0.004,
+      "A": 0.002,
+      "section": {
+        "material": "steel",
+        "grade": "A500_GRB",
+        "shape": "square_tube",
+        "outer_diameter_in": null,
+        "outer_width_in": 1.0,
+        "outer_height_in": 1.0,
+        "wall_thickness_in": 0.083,
+        "area_in2": 0.30444,
+        "weight_lb_per_ft": 1.034,
+        "yield_strength_psi": 46000.0,
+        "ultimate_strength_psi": 58000.0
+      }
+    }
+  ],
+  "supports": [
+    [
+      "N1",
+      "pin"
+    ],
+    [
+      "N2",
+      "roller"
+    ]
+  ],
+  "masses": [
+    {
+      "id": "M1",
+      "node_id": "N3",
+      "value": 100.0
+    }
+  ],
+  "gridSpacing": 12.0,
+  "snapMode": "minor",
+  "zoomScale": 0.7710202552083325,
+  "panX": 66.05554194827315,
+  "panY": 67.18305323740114,
+  "timestamp": 1759543775.3410637
+}

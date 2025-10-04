@@ -220,12 +220,13 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         </g>
       )}
       <g transform={`translate(${-panX * SCALE}, ${-panY * SCALE})`}>
-      {/* Undeformed beams with optional section thickness + caps */}
+      {/* Undeformed beams with optional section thickness. For round tubes we now render an explicit pill path (two semicircles + body) */}
       {beams.map(b => {
         const n1 = nodes.find(n => n.id === b.node_start);
         const n2 = nodes.find(n => n.id === b.node_end);
         if (!n1 || !n2) return null;
-        const deletable = mode === 'delete';
+  const deletable = mode === 'delete';
+  const beamColor = deletable ? '#aa0000' : '#666'; // lighter gray than previous #444
         const section: BeamSection | undefined = (b as any).section;
   // Determine physical outer size (inches) then convert to current model units.
         let outerIn = 0;
@@ -244,7 +245,9 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         const r = thicknessPx / 2;
         // Determine if we should render round tube ends. Some material entries may have outer_diameter_in populated
         // even if shape string mismatches; treat presence of outer_diameter_in (and absence of outer_width_in) as round fallback.
-        const isRound = !!section && (section.shape === 'round_tube' || (!!section.outer_diameter_in && !section.outer_width_in));
+  // Robust round detection (case-insensitive + fallback on presence of outer_diameter_in)
+  const shapeVal = section?.shape?.toLowerCase();
+  const isRound = !!section && (shapeVal === 'round_tube' || (shapeVal?.includes('round') ?? false) || (!!section.outer_diameter_in && !section.outer_width_in));
         if (section && !(section.shape === 'round_tube') && section.outer_diameter_in && !section.outer_width_in) {
           // Debug once per beam: fallback path triggered.
           // (This will appear in browser console to confirm cause 1 was shape mismatch.)
@@ -253,24 +256,31 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         }
         // For round tubes: emulate outward half-caps by shortening line and drawing full circles under it at node centers.
         if (isRound) {
-          // Debug: visually differentiate round branch to verify it executes.
-          const color = deletable ? '#aa0000' : '#444';
-          return (
-            <line key={b.id+'-round'} x1={x1} y1={y1} x2={x2} y2={y2}
-              stroke={color}
-              strokeWidth={thicknessPx}
-              strokeLinecap="round"
-              data-shape={section?.shape}
-              data-beamid={b.id}
-              className="round-beam"
-              style={deletable ? { cursor: 'pointer' } : undefined}
-              onClick={e => { if (deletable && onDeleteBeam) { e.stopPropagation(); onDeleteBeam(b.id); } }} />
-          );
+          const rpx = thicknessPx / 2;
+          if (Lpx < 1e-3) return null;
+          if (Lpx <= thicknessPx * 0.2) {
+            return <circle key={b.id+"-pill-short"} cx={x1} cy={y1} r={rpx} fill={beamColor} stroke={deletable? '#550000':'#222'} strokeWidth={0.75} data-beamid={b.id} />;
+          }
+          const pxn = -uy; const pyn = ux; // perpendicular
+          const startTopX = x1 + pxn * rpx; const startTopY = y1 + pyn * rpx;
+          const endTopX = x2 + pxn * rpx; const endTopY = y2 + pyn * rpx;
+          const endBotX = x2 - pxn * rpx; const endBotY = y2 - pyn * rpx;
+          const startBotX = x1 - pxn * rpx; const startBotY = y1 - pyn * rpx;
+          // Capsule path: top edge start->end, arc around end, bottom edge back, arc around start
+          // Use sweep-flag=1 to arc the outer semicircle direction.
+          const rCmd = rpx;
+          const d = [
+            `M ${startTopX} ${startTopY}`,
+            `L ${endTopX} ${endTopY}`,
+            `A ${rCmd} ${rCmd} 0 0 1 ${endBotX} ${endBotY}`,
+            `L ${startBotX} ${startBotY}`,
+            `A ${rCmd} ${rCmd} 0 0 1 ${startTopX} ${startTopY}`,
+            'Z'
+          ].join(' ');
+          return <path key={b.id+"-pill"} d={d} fill={beamColor} stroke={deletable? '#550000':'#222'} strokeWidth={0.75} data-beamid={b.id} style={deletable ? { cursor: 'pointer' } : undefined} onClick={e => { if (deletable && onDeleteBeam) { e.stopPropagation(); onDeleteBeam(b.id); } }} />;
         }
-        // Square (or untyped) sections: simple rectangular representation via butt line full length.
-        return (
-          <line key={b.id+'-line'} x1={x1} y1={y1} x2={x2} y2={y2} stroke={deletable ? '#aa0000' : '#444'} strokeWidth={thicknessPx} strokeLinecap="butt" style={deletable ? { cursor: 'pointer' } : undefined} onClick={e => { if (deletable && onDeleteBeam) { e.stopPropagation(); onDeleteBeam(b.id); } }} />
-        );
+        // Square/untyped - keep stroke representation
+        return <line key={b.id+'-line'} x1={x1} y1={y1} x2={x2} y2={y2} stroke={beamColor} strokeWidth={thicknessPx} strokeLinecap="butt" data-beamid={b.id} style={deletable ? { cursor: 'pointer' } : undefined} onClick={e => { if (deletable && onDeleteBeam) { e.stopPropagation(); onDeleteBeam(b.id); } }} />;
       })}
       {/* Beam length dimensions (optional) */}
       {showDimensions && beams.map(b => {
@@ -319,7 +329,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
             {/* Arrows */}
             <line x1={sx1} y1={sy1} x2={ax1x} y2={ax1y} />
             <line x1={sx2} y1={sy2} x2={ax2x} y2={ax2y} />
-            <text x={mx * SCALE + ox * SCALE} y={my * SCALE + oy * SCALE - 3} fontSize={11} fill="#2d6a4f" textAnchor="middle" fontFamily="monospace" stroke="#fff" strokeWidth={2} paintOrder="stroke">{label}</text>
+            <text x={mx * SCALE + ox * SCALE} y={my * SCALE + oy * SCALE - 3} fontSize={12} fill="#2d6a4f" textAnchor="middle" fontFamily="monospace" stroke="#fff" strokeWidth={2} paintOrder="stroke">{label}</text>
           </g>
         );
       })}
@@ -381,7 +391,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
               elems.push(
                 <g key={key} pointerEvents="none">
                   <polyline points={pts.join(' ')} fill="none" stroke="#6a4c93" strokeWidth={1} />
-                  <text x={lx} y={ly} fontSize={10} fill="#6a4c93" textAnchor="middle" fontFamily="monospace" stroke="#fff" strokeWidth={2} paintOrder="stroke">{labelDeg}</text>
+                  <text x={lx} y={ly} fontSize={11} fill="#6a4c93" textAnchor="middle" fontFamily="monospace" stroke="#fff" strokeWidth={2} paintOrder="stroke">{labelDeg}</text>
                 </g>
               );
             }
@@ -414,9 +424,35 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
         const isTension = displayAxial > 0; // now + means tension in UI (original solver compression)
         const color = isTension ? '#d62828' : '#003049';
         const label = `${isTension ? 'T' : 'C'} ${Math.abs(axial_lbs).toFixed(1)} lb`;
+        // Tension stress utilization (only for tension beams with section data)
+        let ratioElem: JSX.Element | null = null;
+        if (isTension && (beam as any).section) {
+          const section: BeamSection | undefined = (beam as any).section;
+          const area = section?.area_in2; // square inches
+          const fy = section?.yield_strength_psi; // psi
+          if (area && fy && area > 0 && fy > 0) {
+            // axial_lbs already in lbf. stress ratio = Force / (Fy * Area)
+            const ratio = Math.abs(axial_lbs) / (fy * area); // dimensionless
+            // Place ratio slightly below existing force label to reduce overlap; also shift perpendicular to beam if possible.
+            // Compute a perpendicular offset using beam direction.
+            const dx = (n2.x - n1.x); const dy = (n2.y - n1.y);
+            const L = Math.hypot(dx, dy) || 1;
+            const nxp = -dy / L; const nyp = dx / L; // unit perpendicular
+            const offsetScreen = 14; // px away from force label
+            const rx = mx + nxp * offsetScreen;
+            const ry = my + nyp * offsetScreen;
+            ratioElem = (
+              <text key={f.id + '-ratio'} x={rx} y={ry + 10} fontSize={12} fill={ratio >= 0.9 ? '#b91c1c' : ratio >= 0.7 ? '#d97706' : '#065f46'}
+                    stroke="#fff" strokeWidth={2} paintOrder="stroke" textAnchor="middle" fontFamily="monospace">
+                {ratio.toFixed(ratio >= 0.995 ? 2 : 3)}
+              </text>
+            );
+          }
+        }
         return (
           <g key={f.id + '-force'}>
-            <text x={mx + 4} y={my - 4} fontSize={10} fill={color} stroke="#fff" strokeWidth={0.8} paintOrder="stroke" style={{ userSelect: 'none' }}>{label}</text>
+            <text x={mx + 4} y={my - 4} fontSize={11} fill={color} stroke="#fff" strokeWidth={0.8} paintOrder="stroke" style={{ userSelect: 'none' }}>{label}</text>
+            {ratioElem}
           </g>
         );
       })}
@@ -518,7 +554,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
                   <g key={`fx-${n.id}-${e.beam.id}`} pointerEvents="none">
                     <line x1={arrowStartX} y1={arrowStartY} x2={fxEndX} y2={fxEndY} stroke={compColorX} strokeWidth={2} />
                     <polygon points={`${fxEndX},${fxEndY} ${fxAx1},${fxAy1} ${fxAx2},${fxAy2}`} fill={compColorX} />
-                    <text x={(arrowStartX+fxEndX)/2} y={fxEndY - 6} fontSize={9} fill={compColorX} textAnchor="middle" stroke="#fff" strokeWidth={2} paintOrder="stroke">{Math.abs(fx_lbs).toFixed(1)}x</text>
+                    <text x={(arrowStartX+fxEndX)/2} y={fxEndY - 6} fontSize={10} fill={compColorX} textAnchor="middle" stroke="#fff" strokeWidth={2} paintOrder="stroke">{Math.abs(fx_lbs).toFixed(1)}x</text>
                   </g>
                 );
                 // Vertical component
@@ -533,7 +569,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
                   <g key={`fy-${n.id}-${e.beam.id}`} pointerEvents="none">
                     <line x1={arrowStartX} y1={arrowStartY} x2={fyEndX} y2={fyEndY} stroke={compColorY} strokeWidth={2} />
                     <polygon points={`${fyEndX},${fyEndY} ${fyAx1},${fyAy1} ${fyAx2},${fyAy2}`} fill={compColorY} />
-                    <text x={fyEndX - 6} y={(arrowStartY+fyEndY)/2} fontSize={9} fill={compColorY} textAnchor="end" stroke="#fff" strokeWidth={2} paintOrder="stroke">{Math.abs(fy_lbs).toFixed(1)}y</text>
+                    <text x={fyEndX - 6} y={(arrowStartY+fyEndY)/2} fontSize={10} fill={compColorY} textAnchor="end" stroke="#fff" strokeWidth={2} paintOrder="stroke">{Math.abs(fy_lbs).toFixed(1)}y</text>
                   </g>
                 );
               }
@@ -542,7 +578,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
                   {compElems}
                   <line x1={arrowStartX} y1={arrowStartY} x2={endX} y2={endY} stroke={color} strokeWidth={3} />
                   <polygon points={`${endX},${endY} ${ax1},${ay1} ${ax2},${ay2}`} fill={color} />
-                  <text x={labelX} y={labelY} fontSize={10} fill={color} textAnchor="middle" stroke="#fff" strokeWidth={2} paintOrder="stroke" fontFamily="monospace">{label}</text>
+                  <text x={labelX} y={labelY} fontSize={11} fill={color} textAnchor="middle" stroke="#fff" strokeWidth={2} paintOrder="stroke" fontFamily="monospace">{label}</text>
                 </g>
               );
             });
@@ -632,16 +668,17 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
               );
             })()}
             {massLabel && (
-              <text x={n.x * SCALE + 8} y={n.y * SCALE - 8} fontSize={10} fill="#222">{massLabel}</text>
+              <text x={n.x * SCALE + 8} y={n.y * SCALE - 8} fontSize={11} fill="#222">{massLabel}</text>
             )}
-            <text x={n.x * SCALE + 6} y={n.y * SCALE + 4} fontSize={10} fill="#222">{n.id}</text>
+            <text x={n.x * SCALE + 6} y={n.y * SCALE + 4} fontSize={11} fill="#222">{n.id}</text>
           </g>
         );
       })}
+      {/* (Removed separate overlay circles; pill path directly provides rounded ends.) */}
       {hoverPoint && mode === 'node' && (
         <g pointerEvents="none">
           <circle cx={hoverPoint.x * SCALE} cy={hoverPoint.y * SCALE} r={8} fill="rgba(0,123,255,0.25)" stroke="#007bff" strokeDasharray="4 2" />
-          <text x={hoverPoint.x * SCALE + 10} y={hoverPoint.y * SCALE - 10} fontSize={10} fill="#225" stroke="#fff" strokeWidth={0.8} paintOrder="stroke">{hoverPoint.x.toFixed(2)}, {hoverPoint.y.toFixed(2)}</text>
+          <text x={hoverPoint.x * SCALE + 10} y={hoverPoint.y * SCALE - 10} fontSize={11} fill="#225" stroke="#fff" strokeWidth={0.8} paintOrder="stroke">{hoverPoint.x.toFixed(2)}, {hoverPoint.y.toFixed(2)}</text>
         </g>
       )}
       {showGrid && (() => {
@@ -706,7 +743,7 @@ export const FrameCanvas: React.FC<Props> = ({ nodes, beams, result, mode, pendi
               return <line key={v} x1={x} y1={height - bottomOffset - (majorTick ? 12 : 8)} x2={x} y2={height - bottomOffset} stroke="#111" strokeWidth={majorTick ? 2 : 1} />;
             })}
             <rect x={labelX} y={height - bottomOffset + 4} rx={3} ry={3} height={16} width={labelWidth} fill="#111" />
-            <text x={labelX + 4} y={height - bottomOffset + 16} fontSize={12} fill="#fff" fontFamily="monospace">{label}</text>
+            <text x={labelX + 4} y={height - bottomOffset + 16} fontSize={13} fill="#fff" fontFamily="monospace">{label}</text>
           </g>
         );
       })()}
